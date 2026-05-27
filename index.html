@@ -243,9 +243,7 @@ input,select,textarea{font-family:inherit}
       <div class="sidebar-item" data-page="wbs">
         <span class="si-icon">📋</span> WBS / Tiến độ
       </div>
-      <div class="sidebar-item" data-page="update">
-        <span class="si-icon">✏️</span> Cập nhật TT
-      </div>
+
       <div class="sidebar-section">Quản lý</div>
       <div class="sidebar-item" data-page="photos">
         <span class="si-icon">📷</span> Ảnh hiện trường
@@ -714,7 +712,11 @@ async function loadDashboard() {
             <td>${statusBadge(t.status)}</td>
             <td style="${dStyle}">${delay != null ? (delay>0?'+'+delay:delay)+'d' : '—'}</td>
           </tr>`
-        }).join('')}
+        }).join('')
+  // Make images clickable to open in new tab
+  el.querySelectorAll('img').forEach(img => {
+    img.style.cursor = 'pointer'
+  })}
       </tbody>
     </table>`
 
@@ -1195,6 +1197,7 @@ async function saveProgress(taskId) {
           .from(CFG.STORAGE_BUCKET).upload(path, file, { upsert: true })
         if (upErr) { console.error('Upload error:', upErr); continue }
 
+        // Lưu path thay vì URL — generate signed URL khi hiển thị
         const { data: urlData } = sb.storage.from(CFG.STORAGE_BUCKET).getPublicUrl(path)
         const photoUrl = urlData?.publicUrl || `${CFG.SUPABASE_URL}/storage/v1/object/public/${CFG.STORAGE_BUCKET}/${path}`
         await sb.from('task_photos').insert({
@@ -1203,6 +1206,7 @@ async function saveProgress(taskId) {
           week_number:   getISOWeek(now),
           year:          now.getFullYear(),
           photo_url:     photoUrl,
+          caption:       path,  // store path in caption for signed URL fallback
           uploaded_by:   STATE.user.email,
           taken_at:      now.toISOString().slice(0,10),
         })
@@ -1226,9 +1230,10 @@ function photos() {
   return `
   <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Ảnh hiện trường</h2>
   <div class="card">
-    <div style="display:flex;gap:8px;margin-bottom:16px">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       <select class="form-input" id="photo-week-filter" style="width:160px" onchange="loadPhotos()">
-        ${Array.from({length:8},(_,i) => {
+        <option value="all">— Tất cả các tuần —</option>
+        ${Array.from({length:12},(_,i) => {
           const w = getISOWeek(new Date()) - i
           return `<option value="${w}" ${i===0?'selected':''}>Tuần ${w}</option>`
         }).join('')}
@@ -1250,14 +1255,16 @@ async function loadPhotos() {
   if (!STATE.currentProject) { el.innerHTML='<div style="color:var(--gray4);padding:20px">Chưa có dự án</div>'; return }
   el.innerHTML = '<span style="color:var(--gray4)">Đang tải...</span>'
 
-  const week = parseInt(document.getElementById('photo-week-filter')?.value || getISOWeek(new Date()))
+  const weekVal = document.getElementById('photo-week-filter')?.value || String(getISOWeek(new Date()))
   const taskId = document.getElementById('photo-task-filter')?.value
 
   let query = sb.from('task_photos')
     .select('*, tasks(name,wbs_code)')
     .eq('project_id', STATE.currentProject.id)
-    .eq('week_number', week)
-    .eq('year', new Date().getFullYear())
+
+  if (weekVal !== 'all') {
+    query = query.eq('week_number', parseInt(weekVal)).eq('year', new Date().getFullYear())
+  }
     .order('created_at', {ascending: false})
 
   if (taskId) query = query.eq('task_id', taskId)
@@ -1268,9 +1275,24 @@ async function loadPhotos() {
     return
   }
 
-  el.innerHTML = photos.map(p => {
-    // Try to get signed URL for display — fallback to public URL
-    const displayUrl = p.photo_url
+  // Generate signed URLs for display (60 min expiry) — bypass CORS
+  const photosWithUrls = await Promise.all(photos.map(async p => {
+    try {
+      // Extract storage path from public URL
+      const urlParts = p.photo_url.split('/storage/v1/object/public/' + CFG.STORAGE_BUCKET + '/')
+      if (urlParts.length > 1) {
+        const storagePath = decodeURIComponent(urlParts[1])
+        const { data: signed } = await sb.storage
+          .from(CFG.STORAGE_BUCKET)
+          .createSignedUrl(storagePath, 3600)  // 1 hour
+        if (signed?.signedUrl) return { ...p, display_url: signed.signedUrl }
+      }
+    } catch(e) { /* fallback to public URL */ }
+    return { ...p, display_url: p.photo_url }
+  }))
+
+  el.innerHTML = photosWithUrls.map(p => {
+    const displayUrl = p.display_url || p.photo_url
     return `
     <div style="border-radius:var(--radius);overflow:hidden;border:1px solid var(--gray2);background:white">
       <a href="${displayUrl}" target="_blank" rel="noopener"
