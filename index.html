@@ -1261,7 +1261,7 @@ async function loadPhotos() {
   if (weekVal !== 'all') {
     query = query.eq('week_number', parseInt(weekVal)).eq('year', new Date().getFullYear())
   }
-    .order('created_at', {ascending: false})
+  query = query.order('created_at', {ascending: false})
 
   if (taskId) query = query.eq('task_id', taskId)
   const { data: photos } = await query
