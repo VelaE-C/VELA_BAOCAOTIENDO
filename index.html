@@ -360,6 +360,71 @@ function computeRollupPct(tasks) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// COMPUTE PARENT DATES từ task con (lưu vào DB)
+// kh_start cha = MIN start con, kh_finish cha = MAX finish con
+// ═══════════════════════════════════════════════════════════
+async function recomputeParentDates(projectId) {
+  const tasks = STATE.tasks
+  if (!tasks.length) return
+
+  // Sort summary tasks by level desc (bottom-up)
+  const summaries = tasks
+    .filter(t => t.is_summary)
+    .sort((a,b) => b.outline_level - a.outline_level)
+
+  const updates = []
+
+  summaries.forEach(parent => {
+    // Direct children only
+    const children = tasks.filter(c =>
+      c.wbs_code.startsWith(parent.wbs_code + '.') &&
+      c.wbs_code.split('.').length === parent.wbs_code.split('.').length + 1
+    )
+    if (!children.length) return
+
+    const starts  = children.map(c => c.kh_start).filter(Boolean).sort()
+    const finishes = children.map(c => c.kh_finish).filter(Boolean).sort()
+
+    const newStart  = starts[0] || null
+    const newFinish = finishes[finishes.length - 1] || null
+    const newDur = newStart && newFinish
+      ? Math.round((new Date(newFinish) - new Date(newStart)) / 86400000)
+      : parent.kh_duration_days
+
+    // Only update if changed
+    if (newStart !== parent.kh_start || newFinish !== parent.kh_finish) {
+      updates.push({ id: parent.id, kh_start: newStart, kh_finish: newFinish, kh_duration_days: newDur })
+      // Update local state too so children calc correctly
+      parent.kh_start  = newStart
+      parent.kh_finish = newFinish
+      parent.kh_duration_days = newDur
+    }
+  })
+
+  if (!updates.length) {
+    toast('Ngày KH cha đã chính xác, không cần cập nhật.', '')
+    return
+  }
+
+  loading(true, `Đang cập nhật ${updates.length} hạng mục cha...`)
+  try {
+    for (const upd of updates) {
+      const { error } = await sb.from('tasks')
+        .update({ kh_start: upd.kh_start, kh_finish: upd.kh_finish, kh_duration_days: upd.kh_duration_days })
+        .eq('id', upd.id)
+      if (error) throw error
+    }
+    await loadProjectData(projectId)
+    toast(`Đã cập nhật ${updates.length} hạng mục cha theo ngày con!`, 'success')
+    navigate('wbs')
+  } catch(e) {
+    toast('Lỗi: ' + e.message, 'error')
+  } finally {
+    loading(false)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
 function toast(msg, type='') {
@@ -499,6 +564,10 @@ async function initApp(user) {
   if (STATE.role === 'updater') {
     document.querySelector('[data-page="import"]')?.style.setProperty('display','none')
   }
+  // Hide planner-only sidebar items for updater
+  if (STATE.role === 'updater') {
+    document.querySelectorAll('[data-role="planner"]').forEach(el => el.style.display='none')
+  }
 
   navigate('dashboard')
 }
@@ -529,7 +598,7 @@ function navigate(page) {
   const pages = { dashboard, wbs, update, photos, compare, importPage }
   const fn = pages[page === 'import' ? 'importPage' : page]
   if (fn) content.innerHTML = fn()
-  if (page === 'wbs') initWbs()
+  if (page === 'wbs') { initWbs(); }
   if (page === 'dashboard') loadDashboard()
   if (page === 'compare') loadCompare()
   if (page === 'photos') loadPhotos()
@@ -723,9 +792,10 @@ function wbs() {
       <h2 style="font-size:18px;font-weight:700">WBS — Cây tiến độ</h2>
       <p style="font-size:13px;color:var(--gray4)">${STATE.currentProject?.name || ''}</p>
     </div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="expandAll()">Mở rộng tất cả</button>
       <button class="btn btn-secondary btn-sm" onclick="collapseAll()">Thu gọn tất cả</button>
+      ${STATE.role !== 'updater' ? `<button class="btn btn-secondary btn-sm" title="Tính lại ngày KH cha từ task con" onclick="recomputeParentDates('${STATE.currentProject?.id}')">🔄 Sync ngày KH cha</button>` : ''}
     </div>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
@@ -813,8 +883,8 @@ function initWbs() {
   }).join('')
 
   document.getElementById('wbs-container').innerHTML = rows
-  // Collapse level 4+ by default
-  collapseLevel(4)
+  // Default: show all
+  expandAll()
 }
 
 function wbsRowClick(row, taskId) {
@@ -1172,27 +1242,31 @@ async function loadPhotos() {
     return
   }
 
-  el.innerHTML = photos.map(p => `
-    <div style="border-radius:var(--radius);overflow:hidden;border:1px solid var(--gray2);background:white;cursor:pointer"
-         onclick="window.open('${p.photo_url}','_blank')">
-      <div style="width:100%;height:160px;background:var(--gray1);position:relative;overflow:hidden">
-        <img src="${p.photo_url}"
+  el.innerHTML = photos.map(p => {
+    // Try to get signed URL for display — fallback to public URL
+    const displayUrl = p.photo_url
+    return `
+    <div style="border-radius:var(--radius);overflow:hidden;border:1px solid var(--gray2);background:white">
+      <a href="${displayUrl}" target="_blank" rel="noopener"
+         style="display:block;width:100%;height:160px;background:var(--gray1);position:relative;overflow:hidden;text-decoration:none">
+        <img src="${displayUrl}"
              style="width:100%;height:160px;object-fit:cover;display:block"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
-             crossorigin="anonymous">
-        <div style="display:none;width:100%;height:160px;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--gray4)">
-          <div style="font-size:28px">🖼️</div>
-          <div style="font-size:11px">Nhấn để xem ảnh</div>
-        </div>
-      </div>
+             referrerpolicy="no-referrer"
+             onerror="this.parentElement.innerHTML='<div style=\'width:100%;height:160px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#94A3B8\'><div style=\'font-size:32px\'>🖼️</div><div style=\'font-size:12px\'>Bấm để mở ảnh</div></div>'">
+        <div style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.5);color:white;font-size:10px;padding:2px 6px;border-radius:4px">🔗 Xem</div>
+      </a>
       <div style="padding:8px 10px">
         <div style="font-size:12px;font-weight:500;color:var(--gray7);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           ${p.tasks?.name?.slice(0,35) || '—'}
         </div>
-        <div style="font-size:11px;color:var(--gray4)">${p.caption || ''}</div>
-        <div style="font-size:11px;color:var(--gray4);margin-top:2px">📅 ${p.taken_at||''} · ${p.uploaded_by?.split('@')[0]||''}</div>
+        <div style="font-size:11px;color:var(--gray5)">${p.caption || ''}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <span style="font-size:11px;color:var(--gray4)">📅 ${p.taken_at||''}</span>
+          <span style="font-size:11px;color:var(--gray4)">${p.uploaded_by?.split('@')[0]||''}</span>
+        </div>
       </div>
-    </div>`).join('')
+    </div>`
+  }).join('')
 }
 
 // ═══════════════════════════════════════════════════════════
