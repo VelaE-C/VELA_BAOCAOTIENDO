@@ -1312,12 +1312,19 @@ async function loadPhotos() {
         </div>
       </div>
       <div style="padding:8px 10px">
-        <div style="font-size:12px;font-weight:500;color:var(--gray7);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        <div style="font-size:12px;font-weight:500;color:var(--gray7);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+             title="${p.tasks?.name||''}">
           ${p.tasks?.name?.slice(0,38) || '—'}
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="font-size:11px;color:var(--gray4)">📅 ${p.taken_at||''}</span>
-          <span style="font-size:11px;color:var(--gray4)">${p.uploaded_by?.split('@')[0]||''}</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="font-size:11px;color:var(--gray4)">${p.uploaded_by?.split('@')[0]||''}</span>
+            ${['admin','planner'].includes(STATE.role) ? `
+            <button onclick="event.stopPropagation();deletePhoto('${p.id}','${p.photo_url}')"
+              style="background:#FEE2E2;border:none;color:#DC2626;font-size:11px;padding:2px 7px;border-radius:4px;cursor:pointer;line-height:1.4"
+              title="Xóa ảnh này">🗑️</button>` : ''}
+          </div>
         </div>
       </div>
     </div>`
@@ -1966,6 +1973,41 @@ async function saveTaskDates(taskId) {
     navigate('wbs')
   } catch(e) {
     toast('Lỗi: ' + e.message, 'error')
+  } finally {
+    loading(false)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// XÓA ẢNH HIỆN TRƯỜNG
+// ═══════════════════════════════════════════════════════════
+async function deletePhoto(photoId, photoUrl) {
+  if (!['admin','planner'].includes(STATE.role)) {
+    toast('Không có quyền xóa ảnh', 'error'); return
+  }
+  if (!confirm('Xóa ảnh này? Không thể hoàn tác.')) return
+
+  loading(true, 'Đang xóa ảnh...')
+  try {
+    // Xóa record trong DB
+    const { error: dbErr } = await sb.from('task_photos').delete().eq('id', photoId)
+    if (dbErr) throw dbErr
+
+    // Xóa file trong Storage
+    try {
+      const urlParts = photoUrl.split('/storage/v1/object/public/' + CFG.STORAGE_BUCKET + '/')
+      if (urlParts.length > 1) {
+        const storagePath = decodeURIComponent(urlParts[1])
+        await sb.storage.from(CFG.STORAGE_BUCKET).remove([storagePath])
+      }
+    } catch(e) {
+      console.warn('Storage remove failed (DB record deleted):', e)
+    }
+
+    toast('Đã xóa ảnh!', 'success')
+    loadPhotos()  // Reload gallery
+  } catch(e) {
+    toast('Lỗi xóa ảnh: ' + e.message, 'error')
   } finally {
     loading(false)
   }
