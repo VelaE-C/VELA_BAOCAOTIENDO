@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VelaE&C — Theo dõi tiến độ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/umd/supabase.min.js"></script>
+<style>
+/* ── Config ── */
+:root {
+  --navy:   #1A2B4A;
+  --blue:   #2563EB;
+  --blue2:  #1D4ED8;
+  --lblue:  #EFF6FF;
+  --teal:   #0D9488;
+  --green:  #16A34A;
+  --amber:  #D97706;
+  --red:    #DC2626;
+  --gray0:  #F8FAFC;
+  --gray1:  #F1F5F9;
+  --gray2:  #E2E8F0;
+  --gray3:  #CBD5E1;
+  --gray4:  #94A3B8;
+  --gray5:  #64748B;
+  --gray6:  #475569;
+  --gray7:  #334155;
+  --gray8:  #1E293B;
+  --white:  #FFFFFF;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.05);
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--gray0);color:var(--gray8);font-size:14px;line-height:1.5}
+button{cursor:pointer;font-family:inherit}
+input,select,textarea{font-family:inherit}
+
+/* ── Layout ── */
+#app{display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:var(--navy);color:white;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.topbar-logo{font-size:16px;font-weight:700;letter-spacing:-.3px}
+.topbar-logo span{color:#60A5FA}
+.topbar-proj{font-size:13px;color:#94A3B8;padding:4px 10px;background:rgba(255,255,255,.08);border-radius:6px;cursor:pointer}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.topbar-user{font-size:12px;color:#94A3B8}
+.btn-logout{font-size:12px;padding:5px 12px;background:rgba(255,255,255,.1);border:none;color:white;border-radius:6px}
+.btn-logout:hover{background:rgba(255,255,255,.18)}
+
+.main{display:flex;flex:1;overflow:hidden}
+.sidebar{width:220px;background:white;border-right:1px solid var(--gray2);padding:16px 0;flex-shrink:0;overflow-y:auto}
+.sidebar-item{display:flex;align-items:center;gap:10px;padding:9px 18px;font-size:13px;color:var(--gray6);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+.sidebar-item:hover{background:var(--gray1);color:var(--gray8)}
+.sidebar-item.active{background:var(--lblue);color:var(--blue);border-left-color:var(--blue);font-weight:500}
+.sidebar-item .si-icon{font-size:16px;width:18px;text-align:center}
+.sidebar-section{font-size:11px;font-weight:600;color:var(--gray4);text-transform:uppercase;letter-spacing:.06em;padding:12px 18px 4px}
+
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* ── Cards ── */
+.card{background:white;border-radius:var(--radius-lg);border:1px solid var(--gray2);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
+.card-title{font-size:15px;font-weight:600;color:var(--gray8);margin-bottom:4px}
+.card-sub{font-size:12px;color:var(--gray4);margin-bottom:16px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);border:none;font-size:13px;font-weight:500;transition:all .15s}
+.btn-primary{background:var(--blue);color:white}
+.btn-primary:hover{background:var(--blue2)}
+.btn-secondary{background:var(--gray1);color:var(--gray7);border:1px solid var(--gray2)}
+.btn-secondary:hover{background:var(--gray2)}
+.btn-success{background:var(--green);color:white}
+.btn-danger{background:var(--red);color:white}
+.btn-sm{padding:5px 10px;font-size:12px}
+
+/* ── Forms ── */
+.form-group{margin-bottom:14px}
+.form-label{font-size:12px;font-weight:500;color:var(--gray6);margin-bottom:5px;display:block}
+.form-input{width:100%;padding:8px 12px;border:1px solid var(--gray3);border-radius:var(--radius);font-size:13px;color:var(--gray8);background:white;outline:none;transition:border .15s}
+.form-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-green{background:#DCFCE7;color:#166534}
+.badge-amber{background:#FEF3C7;color:#92400E}
+.badge-red{background:#FEE2E2;color:#991B1B}
+.badge-blue{background:#DBEAFE;color:#1E40AF}
+.badge-gray{background:var(--gray1);color:var(--gray5)}
+
+/* ── Tables ── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{background:var(--gray1);padding:9px 12px;text-align:left;font-size:11px;font-weight:600;color:var(--gray5);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray2)}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--gray2);color:var(--gray7);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--gray0)}
+
+/* ── WBS Tree ── */
+.wbs-tree{font-size:13px}
+.wbs-row{display:flex;align-items:center;border-bottom:1px solid var(--gray2);cursor:pointer;transition:background .1s;min-height:36px}
+.wbs-row:hover{background:var(--gray0)}
+.wbs-row.summary{background:var(--gray1)}
+.wbs-row.summary:hover{background:var(--gray2)}
+.wbs-row.collapsed .wbs-children{display:none}
+.wbs-indent{flex-shrink:0}
+.wbs-toggle{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--gray4);font-size:11px}
+.wbs-name{flex:1;padding:6px 8px 6px 4px;font-weight:400}
+.wbs-row.summary .wbs-name{font-weight:600;color:var(--gray8)}
+.wbs-row.level-1 .wbs-name{color:var(--navy);font-size:14px}
+.wbs-kh-start,.wbs-kh-end,.wbs-dur{width:90px;text-align:center;color:var(--gray5);font-size:12px;padding:0 6px;flex-shrink:0}
+.wbs-status{width:130px;text-align:center;flex-shrink:0;padding:0 6px}
+.wbs-pct{width:70px;text-align:center;flex-shrink:0;padding:0 6px}
+.wbs-header{display:flex;align-items:center;background:var(--navy);color:white;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:8px 0;border-radius:var(--radius) var(--radius) 0 0;min-height:36px}
+.wbs-header .wbs-name{color:white;font-size:11px}
+.wbs-header .wbs-kh-start,.wbs-header .wbs-kh-end,
+.wbs-header .wbs-dur,.wbs-header .wbs-status,.wbs-header .wbs-pct{color:rgba(255,255,255,.8)}
+
+/* ── Progress bar ── */
+.pct-bar{height:6px;background:var(--gray2);border-radius:3px;overflow:hidden;width:100%}
+.pct-fill{height:100%;border-radius:3px;transition:width .3s}
+.pct-fill.on{background:var(--green)}
+.pct-fill.late{background:var(--red)}
+.pct-fill.ahead{background:var(--teal)}
+
+/* ── Login ── */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,var(--navy) 0%,#1e3a5f 100%)}
+.login-card{background:white;border-radius:16px;padding:40px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo h1{font-size:22px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.login-logo p{font-size:13px;color:var(--gray4)}
+.login-error{background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none}
+
+/* ── Import zone ── */
+.drop-zone{border:2px dashed var(--gray3);border-radius:var(--radius-lg);padding:40px 24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--gray0)}
+.drop-zone:hover,.drop-zone.dragover{border-color:var(--blue);background:var(--lblue)}
+.drop-zone .dz-icon{font-size:36px;margin-bottom:12px;color:var(--gray3)}
+.drop-zone:hover .dz-icon,.drop-zone.dragover .dz-icon{color:var(--blue)}
+.drop-zone h3{font-size:14px;font-weight:600;color:var(--gray7);margin-bottom:6px}
+.drop-zone p{font-size:12px;color:var(--gray4)}
+
+/* ── Progress detail form ── */
+.update-form{display:grid;gap:12px}
+.photo-upload-area{border:2px dashed var(--gray3);border-radius:var(--radius);padding:20px;text-align:center;cursor:pointer;transition:all .2s}
+.photo-upload-area:hover{border-color:var(--blue);background:var(--lblue)}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-top:8px}
+.photo-thumb{position:relative;aspect-ratio:1;border-radius:var(--radius);overflow:hidden;background:var(--gray1)}
+.photo-thumb img{width:100%;height:100%;object-fit:cover}
+.photo-remove{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;display:flex;align-items:center;justify-content:center}
+
+/* ── Dashboard metrics ── */
+.metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.metric-card{background:white;border-radius:var(--radius);border:1px solid var(--gray2);padding:14px 16px;box-shadow:var(--shadow)}
+.metric-card .m-lbl{font-size:11px;color:var(--gray4);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.metric-card .m-val{font-size:24px;font-weight:700;line-height:1}
+.metric-card .m-sub{font-size:11px;color:var(--gray4);margin-top:4px}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--gray8);color:white;padding:12px 18px;border-radius:var(--radius);font-size:13px;box-shadow:var(--shadow-md);z-index:1000;transform:translateY(80px);opacity:0;transition:all .3s}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--red)}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:white;border-radius:var(--radius-lg);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-head{padding:20px 24px 16px;border-bottom:1px solid var(--gray2);display:flex;justify-content:space-between;align-items:center}
+.modal-head h3{font-size:15px;font-weight:600}
+.modal-close{background:none;border:none;font-size:20px;color:var(--gray4);line-height:1;padding:2px}
+.modal-close:hover{color:var(--gray7)}
+.modal-body{padding:20px 24px}
+.modal-foot{padding:14px 24px;border-top:1px solid var(--gray2);display:flex;justify-content:flex-end;gap:8px}
+
+/* ── Spinner ── */
+.spinner{width:20px;height:20px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.8);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-size:14px;color:var(--gray6)}
+.loading-overlay .spinner{border-color:rgba(37,99,235,.2);border-top-color:var(--blue);width:36px;height:36px;border-width:3px}
+
+/* ── Responsive ── */
+@media(max-width:768px){
+  .sidebar{display:none}
+  .content{padding:16px}
+  .form-row{grid-template-columns:1fr}
+  .metrics-row{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══════════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <h1>⚡ VelaE&C</h1>
+      <p>Hệ thống theo dõi tiến độ thi công</p>
+    </div>
+    <div class="login-error" id="login-error"></div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="login-email" type="email" placeholder="email@vela.com.vn">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Mật khẩu</label>
+      <input class="form-input" id="login-pw" type="password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px" id="btn-login">
+      Đăng nhập
+    </button>
+  </div>
+</div>
+
+<!-- ══ MAIN APP ════════════════════════════════════════════ -->
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">⚡ Vela<span>E&C</span></div>
+      <select id="proj-select" class="topbar-proj"></select>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-user" id="user-email"></span>
+      <button class="btn-logout" id="btn-logout">Đăng xuất</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="sidebar-section">Tổng quan</div>
+      <div class="sidebar-item active" data-page="dashboard">
+        <span class="si-icon">📊</span> Dashboard TGD
+      </div>
+      <div class="sidebar-item" data-page="wbs">
+        <span class="si-icon">📋</span> WBS / Tiến độ
+      </div>
+      <div class="sidebar-item" data-page="update">
+        <span class="si-icon">✏️</span> Cập nhật TT
+      </div>
+      <div class="sidebar-section">Quản lý</div>
+      <div class="sidebar-item" data-page="photos">
+        <span class="si-icon">📷</span> Ảnh hiện trường
+      </div>
+      <div class="sidebar-item" data-page="compare">
+        <span class="si-icon">🔄</span> So sánh tuần
+      </div>
+      <div class="sidebar-item" data-page="import">
+        <span class="si-icon">📥</span> Import MS Project
+      </div>
+    </div>
+
+    <div class="content" id="main-content"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL ══ -->
+<div class="modal-overlay" id="modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-title">Modal</h3>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<!-- ══ LOADING ══ -->
+<div class="loading-overlay" id="loading" style="display:none">
+  <div class="spinner"></div>
+  <div id="loading-msg">Đang xử lý...</div>
+</div>
+
+<!-- ══ TOAST ══ -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════
+const CFG = {
+  SUPABASE_URL:  'https://gqelblpdujdqdddisjei.supabase.co',
+  SUPABASE_KEY:  'sb_publishable_ze2HoQt8kAzb0WSkZqSbdA_qupIyCmu',
+  GOOGLE_KEY:    'AIzaSyA0RIegBVbU_FBU5_kCT9IGNswN0f_1b68',
+  SHEETS_ID:     '16eDdNcTfyt9QC82XnoERC3uORTpdG_mrjU9kd40DE0I',
+  SHEET_TAB:     'TongHop',
+  STORAGE_BUCKET:'site-photos',
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUPABASE INIT
+// ═══════════════════════════════════════════════════════════
+const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY)
+
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let STATE = {
+  user: null,
+  role: null,
+  projects: [],
+  currentProject: null,
+  tasks: [],
+  progress: {},  // task_id -> latest progress
+  photos: [],
+}
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+function toast(msg, type='') {
+  const t = document.getElementById('toast')
+  t.textContent = msg
+  t.className = 'toast show' + (type ? ' '+type : '')
+  setTimeout(() => t.className='toast', 3000)
+}
+
+function loading(show, msg='Đang xử lý...') {
+  document.getElementById('loading').style.display = show ? 'flex' : 'none'
+  document.getElementById('loading-msg').textContent = msg
+}
+
+function fmtDate(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('vi-VN', {day:'2-digit',month:'2-digit',year:'numeric'})
+}
+
+function fmtDateShort(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('vi-VN', {day:'2-digit',month:'2-digit'})
+}
+
+function getISOWeek(d) {
+  const date = new Date(d)
+  date.setHours(0,0,0,0)
+  date.setDate(date.getDate() + 3 - (date.getDay()+6) % 7)
+  const w1 = new Date(date.getFullYear(), 0, 4)
+  return 1 + Math.round(((date - w1)/86400000 - 3 + (w1.getDay()+6) % 7) / 7)
+}
+
+function statusBadge(status) {
+  const map = {
+    'done':             ['badge-blue','✅ Hoàn thành'],
+    'on_track':         ['badge-green','🟢 Đúng TĐ'],
+    'ahead':            ['badge-green','🟢 Vượt TĐ'],
+    'delayed':          ['badge-amber','🟡 Chậm nhẹ'],
+    'critical':         ['badge-red','🔴 Chậm nghiêm trọng'],
+    'not_started':      ['badge-gray','⚫ Chưa BĐ'],
+    'not_started_late': ['badge-red','🔴 Chưa BĐ - Trễ'],
+    'in_progress':      ['badge-blue','🔵 Đang TH'],
+  }
+  const [cls, lbl] = map[status] || ['badge-gray', status]
+  return `<span class="badge ${cls}">${lbl}</span>`
+}
+
+function openModal(title, body, foot='') {
+  document.getElementById('modal-title').textContent = title
+  document.getElementById('modal-body').innerHTML = body
+  document.getElementById('modal-foot').innerHTML = foot
+  document.getElementById('modal').style.display = 'flex'
+}
+
+function closeModal() {
+  document.getElementById('modal').style.display = 'none'
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════
+async function login() {
+  const email = document.getElementById('login-email').value.trim()
+  const pw    = document.getElementById('login-pw').value
+  const btn   = document.getElementById('btn-login')
+  const err   = document.getElementById('login-error')
+
+  if (!email || !pw) { showErr('Vui lòng điền đủ email và mật khẩu'); return }
+
+  btn.innerHTML = '<span class="spinner"></span> Đang đăng nhập...'
+  btn.disabled = true
+  err.style.display = 'none'
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw })
+  if (error) {
+    showErr('Email hoặc mật khẩu không đúng')
+    btn.innerHTML = 'Đăng nhập'; btn.disabled = false
+    return
+  }
+  await initApp(data.user)
+
+  function showErr(m) { err.textContent = m; err.style.display = 'block' }
+}
+
+async function logout() {
+  await sb.auth.signOut()
+  location.reload()
+}
+
+// ═══════════════════════════════════════════════════════════
+// INIT APP
+// ═══════════════════════════════════════════════════════════
+async function initApp(user) {
+  STATE.user = user
+  document.getElementById('user-email').textContent = user.email
+
+  // Load role
+  const { data: roleData } = await sb.from('user_roles')
+    .select('role, project_id').eq('user_id', user.id).single()
+  STATE.role = roleData?.role || 'updater'
+
+  // Load projects
+  const { data: projs } = await sb.from('projects').select('*').order('code')
+  STATE.projects = projs || []
+
+  // Populate project selector
+  const sel = document.getElementById('proj-select')
+  sel.innerHTML = STATE.projects.map(p =>
+    `<option value="${p.id}">${p.code} — ${p.name}</option>`
+  ).join('')
+
+  if (STATE.projects.length > 0) {
+    STATE.currentProject = STATE.projects[0]
+    await loadProjectData(STATE.currentProject.id)
+  }
+
+  sel.addEventListener('change', async () => {
+    STATE.currentProject = STATE.projects.find(p => p.id === sel.value)
+    await loadProjectData(STATE.currentProject.id)
+    navigate(document.querySelector('.sidebar-item.active')?.dataset.page || 'dashboard')
+  })
+
+  // Show app
+  document.getElementById('login-screen').style.display = 'none'
+  document.getElementById('app').style.display = 'flex'
+
+  // Hide planner-only items for updater
+  if (STATE.role === 'updater') {
+    document.querySelector('[data-page="import"]')?.style.setProperty('display','none')
+  }
+
+  navigate('dashboard')
+}
+
+async function loadProjectData(projectId) {
+  loading(true, 'Đang tải dữ liệu dự án...')
+  try {
+    const { data: tasks } = await sb.from('v_tasks_with_progress')
+      .select('*').eq('project_id', projectId).order('sort_order')
+    STATE.tasks = tasks || []
+
+    // Build progress map
+    STATE.progress = {}
+    STATE.tasks.forEach(t => { STATE.progress[t.id] = t })
+  } finally {
+    loading(false)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function navigate(page) {
+  document.querySelectorAll('.sidebar-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page)
+  })
+  const content = document.getElementById('main-content')
+  const pages = { dashboard, wbs, update, photos, compare, importPage }
+  const fn = pages[page === 'import' ? 'importPage' : page]
+  if (fn) content.innerHTML = fn()
+  if (page === 'wbs') initWbs()
+  if (page === 'dashboard') loadDashboard()
+  if (page === 'compare') loadCompare()
+  if (page === 'photos') loadPhotos()
+  if (page === 'update') initUpdate()
+  if (page === 'import') initImport()
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: DASHBOARD
+// ═══════════════════════════════════════════════════════════
+function dashboard() {
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+      <h2 style="font-size:18px;font-weight:700;color:var(--gray8)">Dashboard Tổng quan</h2>
+      <p style="font-size:13px;color:var(--gray4)">Cập nhật: ${new Date().toLocaleDateString('vi-VN')}</p>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="exportWeeklyReport()">📄 Xuất báo cáo tuần</button>
+  </div>
+  <div class="metrics-row" id="dash-metrics"></div>
+  <div class="card">
+    <div class="card-title">Tiến độ theo hạng mục lớn</div>
+    <div class="card-sub">Chỉ hiển thị task cấp 2-3 (hạng mục tổng hợp)</div>
+    <div id="dash-summary-table"></div>
+  </div>
+  <div class="card" id="dash-labor-card">
+    <div class="card-title">Nhân công tuần này</div>
+    <div class="card-sub">Nguồn: Google Sheets VELA Quân số — Tab TongHop</div>
+    <div id="dash-labor"></div>
+  </div>`
+}
+
+async function loadDashboard() {
+  const tasks = STATE.tasks
+  if (!tasks.length) return
+
+  const leaf = tasks.filter(t => !t.is_summary)
+  const done = leaf.filter(t => t.pct_complete === 100).length
+  const late = leaf.filter(t => ['critical','delayed','not_started_late'].includes(t.status)).length
+  const onTrack = leaf.filter(t => ['on_track','ahead','done'].includes(t.status)).length
+  const notStarted = leaf.filter(t => t.status?.includes('not_started') && !t.status.includes('late')).length
+  const totalDelay = leaf.reduce((s,t) => s + Math.max(0, t.delay_days||0), 0)
+  const avgDelay = late > 0 ? Math.round(totalDelay/late) : 0
+
+  document.getElementById('dash-metrics').innerHTML = `
+    <div class="metric-card">
+      <div class="m-lbl">Tổng công tác</div>
+      <div class="m-val" style="color:var(--blue)">${leaf.length}</div>
+      <div class="m-sub">${done} hoàn thành</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-lbl">Chậm tiến độ</div>
+      <div class="m-val" style="color:var(--red)">${late}</div>
+      <div class="m-sub">Cần chú ý</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-lbl">Đúng / Vượt TĐ</div>
+      <div class="m-val" style="color:var(--green)">${onTrack}</div>
+      <div class="m-sub">Bình thường</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-lbl">Chưa bắt đầu</div>
+      <div class="m-val" style="color:var(--gray5)">${notStarted}</div>
+      <div class="m-sub">Theo kế hoạch</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-lbl">Trễ trung bình</div>
+      <div class="m-val" style="color:${avgDelay>7?'var(--red)':'var(--amber)'}">${avgDelay > 0 ? '+'+avgDelay : 0}</div>
+      <div class="m-sub">ngày (task chậm)</div>
+    </div>`
+
+  // Summary table — level 2-3 only
+  const summaries = tasks.filter(t => t.is_summary && t.outline_level <= 3)
+  document.getElementById('dash-summary-table').innerHTML = `
+    <table class="tbl">
+      <thead><tr>
+        <th>Hạng mục</th><th>KH Bắt đầu</th><th>KH Kết thúc</th>
+        <th>% Hoàn thành</th><th>Trạng thái</th><th>Lệch (ngày)</th>
+      </tr></thead>
+      <tbody>
+        ${summaries.slice(0,12).map(t => {
+          const pct = t.pct_complete || 0
+          const delay = t.delay_days
+          const dStyle = delay > 7 ? 'color:var(--red);font-weight:600' :
+                         delay > 0 ? 'color:var(--amber);font-weight:600' :
+                         delay < 0 ? 'color:var(--green)' : ''
+          return `<tr>
+            <td style="padding-left:${(t.outline_level-1)*16+12}px;font-weight:${t.outline_level<=2?600:400}">
+              ${t.name}
+            </td>
+            <td>${fmtDateShort(t.kh_start)}</td>
+            <td>${fmtDateShort(t.kh_finish)}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="pct-bar" style="width:60px">
+                  <div class="pct-fill ${pct===100?'on':delay>0?'late':'on'}" style="width:${pct}%"></div>
+                </div>
+                <span style="font-size:12px;color:var(--gray5)">${pct}%</span>
+              </div>
+            </td>
+            <td>${statusBadge(t.status)}</td>
+            <td style="${dStyle}">${delay != null ? (delay>0?'+'+delay:delay)+'d' : '—'}</td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>`
+
+  // Load labor from Sheets
+  loadLaborData()
+}
+
+async function loadLaborData() {
+  const el = document.getElementById('dash-labor')
+  if (!el) return
+  el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Đang tải dữ liệu nhân công...</span>'
+
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEETS_ID}/values/${CFG.SHEET_TAB}!A:E?key=${CFG.GOOGLE_KEY}`
+    const res = await fetch(url)
+    const json = await res.json()
+    const rows = (json.values || []).slice(1).filter(r => r[0]) // skip header
+
+    // Get current week
+    const now = new Date()
+    const thisWeek = getISOWeek(now)
+    const thisYear = now.getFullYear()
+
+    const weekRows = rows.filter(r => {
+      const d = new Date(r[0].split('/').reverse().join('-'))
+      return getISOWeek(d) === thisWeek && d.getFullYear() === thisYear
+    })
+
+    if (!weekRows.length) {
+      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có dữ liệu tuần này</span>'
+      return
+    }
+
+    const totalBCH = weekRows.reduce((s,r) => s + (parseInt(r[1])||0), 0)
+    const totalCN  = weekRows.reduce((s,r) => s + (parseInt(r[2])||0), 0)
+    const days     = weekRows.length
+
+    // Parse project detail from column E
+    const projMap = {}
+    weekRows.forEach(r => {
+      const detail = r[4] || ''
+      detail.split('|').forEach(part => {
+        const m = part.trim().match(/^(.+?):\s*(\d+)\s*CN/)
+        if (m) projMap[m[1].trim()] = (projMap[m[1].trim()]||0) + parseInt(m[2])
+      })
+    })
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+        <div class="metric-card">
+          <div class="m-lbl">Tổng BCH cả tuần</div>
+          <div class="m-val" style="color:var(--navy)">${totalBCH}</div>
+          <div class="m-sub">${days} ngày có dữ liệu</div>
+        </div>
+        <div class="metric-card">
+          <div class="m-lbl">Tổng CN cả tuần</div>
+          <div class="m-val" style="color:var(--blue)">${totalCN}</div>
+          <div class="m-sub">Tuần ${thisWeek}/${thisYear}</div>
+        </div>
+        <div class="metric-card">
+          <div class="m-lbl">TB CN/ngày</div>
+          <div class="m-val" style="color:var(--teal)">${Math.round(totalCN/days)}</div>
+          <div class="m-sub">người/ngày</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--gray5);margin-bottom:8px;font-weight:500">Chi tiết theo dự án:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${Object.entries(projMap).sort((a,b)=>b[1]-a[1]).map(([proj,cn]) =>
+          `<div style="background:var(--gray1);border-radius:6px;padding:6px 12px;font-size:12px">
+            <strong>${proj}</strong>: ${cn} CN
+          </div>`
+        ).join('')}
+      </div>`
+  } catch(e) {
+    el.innerHTML = `<span style="color:var(--red);font-size:13px">Lỗi đọc dữ liệu: ${e.message}</span>`
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: WBS TREE
+// ═══════════════════════════════════════════════════════════
+function wbs() {
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div>
+      <h2 style="font-size:18px;font-weight:700">WBS — Cây tiến độ</h2>
+      <p style="font-size:13px;color:var(--gray4)">${STATE.currentProject?.name || ''}</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="expandAll()">Mở rộng tất cả</button>
+      <button class="btn btn-secondary btn-sm" onclick="collapseAll()">Thu gọn tất cả</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="wbs-header">
+      <div style="width:40px;flex-shrink:0"></div>
+      <div class="wbs-name">Hạng mục / Công tác</div>
+      <div class="wbs-kh-start">KH Bắt đầu</div>
+      <div class="wbs-kh-end">KH Kết thúc</div>
+      <div class="wbs-dur">Ngày KH</div>
+      <div class="wbs-pct">% HT</div>
+      <div class="wbs-status">Trạng thái</div>
+    </div>
+    <div class="wbs-tree" id="wbs-container"></div>
+  </div>`
+}
+
+function initWbs() {
+  const tasks = STATE.tasks
+  if (!tasks.length) {
+    document.getElementById('wbs-container').innerHTML =
+      '<div style="padding:40px;text-align:center;color:var(--gray4)">Chưa có dữ liệu. Vào Import để tải file MS Project.</div>'
+    return
+  }
+
+  // Build tree structure
+  const rows = tasks.map(t => {
+    const pct = t.pct_complete || 0
+    const delay = t.delay_days
+    const indent = (t.outline_level - 1) * 20
+    const hasChildren = tasks.some(c => c.wbs_code.startsWith(t.wbs_code + '.'))
+
+    return `
+    <div class="wbs-row ${t.is_summary?'summary':''} level-${t.outline_level}"
+         data-wbs="${t.wbs_code}" data-level="${t.outline_level}"
+         data-has-children="${hasChildren}"
+         onclick="wbsRowClick(this, '${t.id}')"
+         style="padding-left:${indent}px">
+      <div class="wbs-toggle">${hasChildren ? '▼' : ''}</div>
+      <div class="wbs-name" title="${t.name}">${t.name}</div>
+      <div class="wbs-kh-start">${fmtDateShort(t.kh_start)}</div>
+      <div class="wbs-kh-end">${fmtDateShort(t.kh_finish)}</div>
+      <div class="wbs-dur">${t.kh_duration_days ?? '—'}</div>
+      <div class="wbs-pct">
+        <div class="pct-bar"><div class="pct-fill ${pct===100?'on':delay>0?'late':'on'}" style="width:${pct}%"></div></div>
+        <div style="font-size:11px;color:var(--gray4);margin-top:2px">${pct}%</div>
+      </div>
+      <div class="wbs-status">${statusBadge(t.status)}</div>
+    </div>`
+  }).join('')
+
+  document.getElementById('wbs-container').innerHTML = rows
+  // Collapse level 4+ by default
+  collapseLevel(4)
+}
+
+function wbsRowClick(row, taskId) {
+  const hasChildren = row.dataset.hasChildren === 'true'
+  if (!hasChildren) {
+    // Open update modal for leaf task
+    openUpdateModal(taskId)
+    return
+  }
+  // Toggle collapse
+  const wbs = row.dataset.wbs
+  const level = parseInt(row.dataset.level)
+  const isCollapsed = row.classList.toggle('collapsed')
+  row.querySelector('.wbs-toggle').textContent = isCollapsed ? '▶' : '▼'
+
+  // Show/hide children
+  document.querySelectorAll('.wbs-row').forEach(r => {
+    if (r.dataset.wbs !== wbs && r.dataset.wbs?.startsWith(wbs + '.')) {
+      r.style.display = isCollapsed ? 'none' : 'flex'
+    }
+  })
+}
+
+function expandAll() {
+  document.querySelectorAll('.wbs-row').forEach(r => {
+    r.style.display = 'flex'
+    r.classList.remove('collapsed')
+    const t = r.querySelector('.wbs-toggle')
+    if (t && r.dataset.hasChildren==='true') t.textContent = '▼'
+  })
+}
+
+function collapseAll() {
+  collapseLevel(2)
+}
+
+function collapseLevel(fromLevel) {
+  document.querySelectorAll('.wbs-row').forEach(r => {
+    const lv = parseInt(r.dataset.level)
+    if (lv >= fromLevel) {
+      r.style.display = 'none'
+      r.classList.add('collapsed')
+    } else {
+      r.style.display = 'flex'
+    }
+  })
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: UPDATE (mobile-friendly form)
+// ═══════════════════════════════════════════════════════════
+function update() {
+  return `
+  <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Cập nhật tiến độ thực tế</h2>
+  <div class="card">
+    <div class="card-title">Tìm công tác cần cập nhật</div>
+    <input class="form-input" id="task-search" placeholder="🔍 Nhập tên công tác..." oninput="searchTasks(this.value)" style="margin-bottom:12px">
+    <div id="task-search-results"></div>
+  </div>`
+}
+
+function initUpdate() {
+  // Show top tasks needing update (late or in progress)
+  const needsUpdate = STATE.tasks.filter(t =>
+    !t.is_summary && ['delayed','critical','in_progress','not_started_late'].includes(t.status)
+  ).slice(0, 15)
+
+  const el = document.getElementById('task-search-results')
+  if (!el) return
+  if (needsUpdate.length) {
+    el.innerHTML = `
+      <div style="font-size:12px;color:var(--gray4);margin-bottom:8px">Công tác cần cập nhật (${needsUpdate.length}):</div>
+      ${needsUpdate.map(t => taskUpdateRow(t)).join('')}`
+  }
+}
+
+function searchTasks(q) {
+  const el = document.getElementById('task-search-results')
+  if (!q.trim()) { initUpdate(); return }
+  const results = STATE.tasks.filter(t =>
+    !t.is_summary && t.name.toLowerCase().includes(q.toLowerCase())
+  ).slice(0, 20)
+  el.innerHTML = results.length
+    ? results.map(t => taskUpdateRow(t)).join('')
+    : '<div style="color:var(--gray4);font-size:13px;padding:12px">Không tìm thấy</div>'
+}
+
+function taskUpdateRow(t) {
+  return `
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--gray2);border-radius:var(--radius);margin-bottom:6px;background:white">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:500;color:var(--gray8);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.name}</div>
+      <div style="font-size:11px;color:var(--gray4)">WBS: ${t.wbs_code} · KH: ${fmtDateShort(t.kh_start)}→${fmtDateShort(t.kh_finish)}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
+      ${statusBadge(t.status)}
+      <button class="btn btn-primary btn-sm" onclick="openUpdateModal('${t.id}')">Cập nhật</button>
+    </div>
+  </div>`
+}
+
+function openUpdateModal(taskId) {
+  const t = STATE.tasks.find(x => x.id === taskId)
+  if (!t) return
+
+  openModal(`Cập nhật: ${t.name}`, `
+    <div style="margin-bottom:12px;padding:10px;background:var(--lblue);border-radius:var(--radius);font-size:12px;color:var(--gray6)">
+      <strong>WBS:</strong> ${t.wbs_code} &nbsp;|&nbsp;
+      <strong>KH:</strong> ${fmtDate(t.kh_start)} → ${fmtDate(t.kh_finish)}
+      (${t.kh_duration_days} ngày)
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Ngày thực tế bắt đầu</label>
+        <input class="form-input" type="date" id="upd-tt-start" value="${t.tt_start||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ngày thực tế kết thúc</label>
+        <input class="form-input" type="date" id="upd-tt-end" value="${t.tt_finish||''}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">% Hoàn thành: <strong id="pct-display">${t.pct_complete||0}%</strong></label>
+      <input type="range" id="upd-pct" min="0" max="100" step="5" value="${t.pct_complete||0}"
+        oninput="document.getElementById('pct-display').textContent=this.value+'%'"
+        style="width:100%;accent-color:var(--blue)">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ghi chú / Nguyên nhân lệch</label>
+      <textarea class="form-input" id="upd-note" rows="3" placeholder="Mô tả tình trạng, nguyên nhân nếu chậm...">${t.note||''}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ảnh hiện trường</label>
+      <div class="photo-upload-area" onclick="document.getElementById('photo-input').click()">
+        📷 Bấm để chọn ảnh (tối đa 5 ảnh)
+      </div>
+      <input type="file" id="photo-input" accept="image/*" multiple style="display:none"
+        onchange="previewPhotos(this)">
+      <div class="photo-grid" id="photo-preview"></div>
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+    <button class="btn btn-primary" onclick="saveProgress('${taskId}')">💾 Lưu cập nhật</button>
+  `)
+}
+
+let pendingPhotos = []
+
+function previewPhotos(input) {
+  pendingPhotos = Array.from(input.files).slice(0, 5)
+  const grid = document.getElementById('photo-preview')
+  grid.innerHTML = pendingPhotos.map((f, i) => `
+    <div class="photo-thumb">
+      <img src="${URL.createObjectURL(f)}" alt="ảnh ${i+1}">
+      <button class="photo-remove" onclick="removePhoto(${i})">✕</button>
+    </div>`).join('')
+}
+
+function removePhoto(i) {
+  pendingPhotos.splice(i, 1)
+  previewPhotos({ files: pendingPhotos })
+}
+
+async function saveProgress(taskId) {
+  const ttStart = document.getElementById('upd-tt-start').value || null
+  const ttEnd   = document.getElementById('upd-tt-end').value || null
+  const pct     = parseInt(document.getElementById('upd-pct').value)
+  const note    = document.getElementById('upd-note').value.trim()
+  const task    = STATE.tasks.find(t => t.id === taskId)
+  const now     = new Date()
+
+  loading(true, 'Đang lưu tiến độ...')
+  closeModal()
+
+  try {
+    // Save progress
+    const { error: progErr } = await sb.from('task_progress').insert({
+      task_id:            taskId,
+      project_id:         STATE.currentProject.id,
+      tt_start:           ttStart,
+      tt_finish:          ttEnd,
+      pct_complete:       pct,
+      note,
+      updated_by:         STATE.user.email,
+      kh_start_snapshot:  task.kh_start,
+      kh_finish_snapshot: task.kh_finish,
+      week_number:        getISOWeek(now),
+      year:               now.getFullYear(),
+    })
+    if (progErr) throw progErr
+
+    // Upload photos
+    if (pendingPhotos.length) {
+      loading(true, `Đang upload ${pendingPhotos.length} ảnh...`)
+      for (const file of pendingPhotos) {
+        const ext  = file.name.split('.').pop()
+        const path = `${STATE.currentProject.id}/${taskId}/${Date.now()}.${ext}`
+        const { data: upData, error: upErr } = await sb.storage
+          .from(CFG.STORAGE_BUCKET).upload(path, file, { upsert: true })
+        if (upErr) { console.error('Upload error:', upErr); continue }
+
+        const { data: urlData } = sb.storage.from(CFG.STORAGE_BUCKET).getPublicUrl(path)
+        await sb.from('task_photos').insert({
+          task_id:       taskId,
+          project_id:    STATE.currentProject.id,
+          week_number:   getISOWeek(now),
+          year:          now.getFullYear(),
+          photo_url:     urlData.publicUrl,
+          uploaded_by:   STATE.user.email,
+          taken_at:      now.toISOString().slice(0,10),
+        })
+      }
+      pendingPhotos = []
+    }
+
+    await loadProjectData(STATE.currentProject.id)
+    toast('Đã lưu tiến độ thành công!', 'success')
+  } catch(e) {
+    toast('Lỗi: ' + e.message, 'error')
+  } finally {
+    loading(false)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: PHOTOS
+// ═══════════════════════════════════════════════════════════
+function photos() {
+  return `
+  <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Ảnh hiện trường</h2>
+  <div class="card">
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <select class="form-input" id="photo-week-filter" style="width:160px" onchange="loadPhotos()">
+        ${Array.from({length:8},(_,i) => {
+          const w = getISOWeek(new Date()) - i
+          return `<option value="${w}" ${i===0?'selected':''}>Tuần ${w}</option>`
+        }).join('')}
+      </select>
+      <select class="form-input" id="photo-task-filter" style="width:200px" onchange="loadPhotos()">
+        <option value="">Tất cả công tác</option>
+        ${STATE.tasks.filter(t=>!t.is_summary).slice(0,30).map(t =>
+          `<option value="${t.id}">${t.name.slice(0,40)}</option>`
+        ).join('')}
+      </select>
+    </div>
+    <div id="photo-grid-main" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px"></div>
+  </div>`
+}
+
+async function loadPhotos() {
+  const el = document.getElementById('photo-grid-main')
+  if (!el) return
+  el.innerHTML = '<span style="color:var(--gray4)">Đang tải...</span>'
+
+  const week = parseInt(document.getElementById('photo-week-filter')?.value || getISOWeek(new Date()))
+  const taskId = document.getElementById('photo-task-filter')?.value
+
+  let query = sb.from('task_photos')
+    .select('*, tasks(name,wbs_code)')
+    .eq('project_id', STATE.currentProject.id)
+    .eq('week_number', week)
+    .eq('year', new Date().getFullYear())
+    .order('created_at', {ascending: false})
+
+  if (taskId) query = query.eq('task_id', taskId)
+  const { data: photos } = await query
+
+  if (!photos?.length) {
+    el.innerHTML = '<div style="color:var(--gray4);padding:20px;text-align:center">Chưa có ảnh tuần này</div>'
+    return
+  }
+
+  el.innerHTML = photos.map(p => `
+    <div style="border-radius:var(--radius);overflow:hidden;border:1px solid var(--gray2);background:white">
+      <img src="${p.photo_url}" style="width:100%;height:140px;object-fit:cover;display:block"
+           onclick="window.open('${p.photo_url}','_blank')" style="cursor:pointer">
+      <div style="padding:8px 10px">
+        <div style="font-size:12px;font-weight:500;color:var(--gray7);margin-bottom:2px">
+          ${p.tasks?.name?.slice(0,30) || '—'}
+        </div>
+        <div style="font-size:11px;color:var(--gray4)">${p.caption||''} · ${p.taken_at||''}</div>
+        <div style="font-size:11px;color:var(--gray4)">${p.uploaded_by||''}</div>
+      </div>
+    </div>`).join('')
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: COMPARE WEEKS
+// ═══════════════════════════════════════════════════════════
+function compare() {
+  const curWeek = getISOWeek(new Date())
+  return `
+  <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">So sánh tiến độ tuần</h2>
+  <div class="card">
+    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+      <div>
+        <div class="form-label">Tuần so sánh A</div>
+        <select class="form-input" id="cmp-week-a" style="width:120px">
+          ${Array.from({length:10},(_,i) => `<option value="${curWeek-i}" ${i===1?'selected':''}>${i===0?'Tuần này':'Tuần '+(curWeek-i)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <div class="form-label">Tuần so sánh B</div>
+        <select class="form-input" id="cmp-week-b" style="width:120px">
+          ${Array.from({length:10},(_,i) => `<option value="${curWeek-i}" ${i===0?'selected':''}>Tuần ${curWeek-i}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="loadCompare()">🔄 So sánh</button>
+    </div>
+    <div id="compare-result"></div>
+  </div>`
+}
+
+async function loadCompare() {
+  const el = document.getElementById('compare-result')
+  if (!el) return
+  el.innerHTML = '<span style="color:var(--gray4)">Đang tải...</span>'
+
+  const weekA = parseInt(document.getElementById('cmp-week-a')?.value || getISOWeek(new Date())-1)
+  const weekB = parseInt(document.getElementById('cmp-week-b')?.value || getISOWeek(new Date()))
+  const yr = new Date().getFullYear()
+
+  const { data: progA } = await sb.from('task_progress')
+    .select('task_id, pct_complete, tt_start, tt_finish, note')
+    .eq('project_id', STATE.currentProject.id)
+    .eq('week_number', weekA).eq('year', yr)
+
+  const { data: progB } = await sb.from('task_progress')
+    .select('task_id, pct_complete, tt_start, tt_finish, note')
+    .eq('project_id', STATE.currentProject.id)
+    .eq('week_number', weekB).eq('year', yr)
+
+  if (!progA?.length && !progB?.length) {
+    el.innerHTML = '<div style="color:var(--gray4);padding:20px">Chưa có dữ liệu cho 2 tuần này</div>'
+    return
+  }
+
+  const mapA = {}; (progA||[]).forEach(p => mapA[p.task_id] = p)
+  const mapB = {}; (progB||[]).forEach(p => mapB[p.task_id] = p)
+
+  const allTaskIds = [...new Set([...Object.keys(mapA), ...Object.keys(mapB)])]
+  const rows = allTaskIds.map(tid => {
+    const task = STATE.tasks.find(t => t.id === tid)
+    if (!task) return ''
+    const pctA = mapA[tid]?.pct_complete ?? null
+    const pctB = mapB[tid]?.pct_complete ?? null
+    const delta = (pctB??0) - (pctA??0)
+    const noChange = pctA !== null && pctB !== null && delta === 0
+    return `<tr ${noChange?'style="background:#FEF3C7"':''}>
+      <td title="${task.name}">${task.name.slice(0,45)}</td>
+      <td style="text-align:center">${pctA !== null ? pctA+'%' : '—'}</td>
+      <td style="text-align:center">${pctB !== null ? pctB+'%' : '—'}</td>
+      <td style="text-align:center;font-weight:600;color:${delta>0?'var(--green)':delta<0?'var(--red)':noChange?'var(--amber)':'var(--gray4)'}">
+        ${delta > 0 ? '+'+delta+'%' : delta < 0 ? delta+'%' : noChange ? '⚠️ Không đổi' : '—'}
+      </td>
+      <td>${mapB[tid]?.note || mapA[tid]?.note || ''}</td>
+    </tr>`
+  }).join('')
+
+  el.innerHTML = `
+    <div style="font-size:13px;color:var(--gray5);margin-bottom:12px">
+      So sánh <strong>Tuần ${weekA}</strong> vs <strong>Tuần ${weekB}</strong>
+      · <span style="color:var(--amber)">⚠️ Vàng = không có tiến triển</span>
+    </div>
+    <table class="tbl">
+      <thead><tr>
+        <th>Công tác</th>
+        <th style="text-align:center">Tuần ${weekA}</th>
+        <th style="text-align:center">Tuần ${weekB}</th>
+        <th style="text-align:center">Thay đổi</th>
+        <th>Ghi chú</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: IMPORT MS PROJECT
+// ═══════════════════════════════════════════════════════════
+function importPage() {
+  return `
+  <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Import từ MS Project</h2>
+  <div class="card">
+    <div class="card-title">Tạo dự án mới từ file XML</div>
+    <div class="card-sub">Export từ MS Project: File → Save As → XML (*.xml)</div>
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="form-group">
+        <label class="form-label">Mã dự án (viết tắt)</label>
+        <input class="form-input" id="imp-code" placeholder="VD: OASIS, VEGA, VCN...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tên đầy đủ</label>
+        <input class="form-input" id="imp-name" placeholder="VD: OASIS - Tiến Độ Thi Công">
+      </div>
+    </div>
+    <div class="drop-zone" id="drop-zone"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="handleDrop(event)"
+         onclick="document.getElementById('xml-input').click()">
+      <div class="dz-icon">📂</div>
+      <h3>Kéo thả file XML vào đây</h3>
+      <p>hoặc bấm để chọn file · Hỗ trợ file .xml từ MS Project</p>
+    </div>
+    <input type="file" id="xml-input" accept=".xml" style="display:none" onchange="handleFileSelect(this)">
+    <div id="import-preview" style="margin-top:16px"></div>
+  </div>`
+}
+
+function initImport() {}
+
+function handleDrop(e) {
+  e.preventDefault()
+  document.getElementById('drop-zone').classList.remove('dragover')
+  const file = e.dataTransfer.files[0]
+  if (file) processXmlFile(file)
+}
+
+function handleFileSelect(input) {
+  const file = input.files[0]
+  if (file) processXmlFile(file)
+}
+
+async function processXmlFile(file) {
+  const code = document.getElementById('imp-code').value.trim().toUpperCase()
+  const name = document.getElementById('imp-name').value.trim()
+
+  if (!code) { toast('Vui lòng nhập mã dự án', 'error'); return }
+
+  const prev = document.getElementById('import-preview')
+  prev.innerHTML = '<span style="color:var(--gray4)">Đang đọc file...</span>'
+
+  const xmlText = await file.text()
+  const parsed = parseMspXml(xmlText, code, name)
+  const m = parsed.meta
+
+  prev.innerHTML = `
+    <div style="background:var(--lblue);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:8px">✅ Đọc file thành công</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:13px">
+        <div><div style="color:var(--gray4);font-size:11px">Tổng tasks</div><strong>${m.total_tasks}</strong></div>
+        <div><div style="color:var(--gray4);font-size:11px">Công tác thực tế</div><strong>${m.leaf_tasks}</strong></div>
+        <div><div style="color:var(--gray4);font-size:11px">Predecessor</div><strong>${m.total_preds}</strong></div>
+        <div><div style="color:var(--gray4);font-size:11px">Số level WBS</div><strong>${m.levels.join(',')}</strong></div>
+      </div>
+      <div style="font-size:12px;color:var(--gray5);margin-top:8px">
+        ${parsed.project.start_date} → ${parsed.project.finish_date}
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="uploadToSupabase(window._parsedData)">
+      ⬆️ Upload lên Supabase
+    </button>`
+
+  window._parsedData = parsed
+}
+
+async function uploadToSupabase(parsed) {
+  loading(true, 'Đang upload project...')
+  try {
+    const { tasks, predecessors, project } = parsed
+
+    // Upsert project
+    const { data: projData, error: pErr } = await sb.from('projects')
+      .upsert({ code: project.code, name: project.name, msp_name: project.msp_name,
+                start_date: project.start_date, finish_date: project.finish_date,
+                updated_at: new Date().toISOString() }, { onConflict: 'code' })
+      .select('id').single()
+    if (pErr) throw pErr
+    const projectId = projData.id
+
+    // Upsert tasks in batches
+    loading(true, `Uploading ${tasks.length} tasks...`)
+    const BATCH = 50
+    for (let i = 0; i < tasks.length; i += BATCH) {
+      const batch = tasks.slice(i, i+BATCH).map(t => ({
+        project_id: projectId, msp_uid: t.msp_uid, msp_id: t.msp_id,
+        wbs_code: t.wbs_code, outline_level: t.outline_level, name: t.name,
+        is_summary: t.is_summary, is_milestone: t.is_milestone, is_active: t.is_active,
+        kh_start: t.kh_start, kh_finish: t.kh_finish, kh_duration_days: t.kh_duration_days,
+        sort_order: t.sort_order, updated_at: new Date().toISOString()
+      }))
+      const { error } = await sb.from('tasks').upsert(batch, { onConflict: 'project_id,msp_uid' })
+      if (error) throw error
+    }
+
+    // Get task UUID map
+    const { data: taskList } = await sb.from('tasks').select('id,msp_uid').eq('project_id', projectId)
+    const uidToId = {}
+    taskList.forEach(t => { uidToId[t.msp_uid] = t.id })
+
+    // Predecessors
+    loading(true, `Uploading ${predecessors.length} predecessors...`)
+    await sb.from('task_predecessors').delete().eq('project_id', projectId)
+    const predRows = predecessors
+      .filter(p => uidToId[p.task_msp_uid] && uidToId[p.predecessor_msp_uid])
+      .map(p => ({ project_id: projectId, task_id: uidToId[p.task_msp_uid],
+                   predecessor_id: uidToId[p.predecessor_msp_uid],
+                   link_type: p.link_type, lag_days: p.lag_days }))
+    for (let i = 0; i < predRows.length; i += BATCH) {
+      const { error } = await sb.from('task_predecessors').insert(predRows.slice(i, i+BATCH))
+      if (error) throw error
+    }
+
+    // Reload
+    const { data: projs } = await sb.from('projects').select('*').order('code')
+    STATE.projects = projs || []
+    const sel = document.getElementById('proj-select')
+    sel.innerHTML = STATE.projects.map(p =>
+      `<option value="${p.id}" ${p.id===projectId?'selected':''}>${p.code} — ${p.name}</option>`
+    ).join('')
+    STATE.currentProject = STATE.projects.find(p => p.id === projectId)
+    await loadProjectData(projectId)
+
+    toast(`Import thành công: ${tasks.length} tasks, ${predecessors.length} predecessors!`, 'success')
+    navigate('wbs')
+  } catch(e) {
+    toast('Lỗi import: ' + e.message, 'error')
+    console.error(e)
+  } finally {
+    loading(false)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// MS PROJECT XML PARSER (client-side)
+// ═══════════════════════════════════════════════════════════
+const LINK_TYPES = {'0':'FF','1':'FS','2':'SF','3':'SS'}
+
+function parseMspXml(xmlStr, code, name) {
+  const NS = 'http://schemas.microsoft.com/project'
+  const doc = new DOMParser().parseFromString(xmlStr, 'text/xml')
+  const root = doc.documentElement
+
+  function txt(el, tag) {
+    const found = el.getElementsByTagNameNS(NS, tag)
+    return found.length ? found[0].textContent.trim() : ''
+  }
+  function parseDur(s) {
+    if (!s) return null
+    const m = s.match(/PT(\d+)H/)
+    return m ? Math.round(parseInt(m[1])/8) : null
+  }
+  function parseLag(s) { return Math.round(parseInt(s||'0')/4800*10)/10 }
+
+  const project = {
+    code: code.toUpperCase(),
+    name: name || txt(root,'Name') || code,
+    msp_name: txt(root,'Name'),
+    start_date: (txt(root,'StartDate')||'').slice(0,10) || null,
+    finish_date: (txt(root,'FinishDate')||'').slice(0,10) || null,
+  }
+
+  const allTasks = [...root.getElementsByTagNameNS(NS,'Task')]
+  const uidMap = {}, tasks = [], predecessors = []
+
+  allTasks.forEach((t, sortOrder) => {
+    const uid = parseInt(txt(t,'UID')||'0')
+    if (uid === 0) return
+    const task = {
+      msp_uid: uid, msp_id: parseInt(txt(t,'ID')||'0'),
+      wbs_code: txt(t,'WBS'), outline_level: parseInt(txt(t,'OutlineLevel')||'0'),
+      name: txt(t,'Name'), is_summary: txt(t,'Summary')==='1',
+      is_milestone: txt(t,'Milestone')==='1', is_active: txt(t,'Active')!=='0',
+      kh_start: (txt(t,'Start')||'').slice(0,10)||null,
+      kh_finish: (txt(t,'Finish')||'').slice(0,10)||null,
+      kh_duration_days: parseDur(txt(t,'Duration')),
+      sort_order: sortOrder, _preds: []
+    }
+    ;[...t.getElementsByTagNameNS(NS,'PredecessorLink')].forEach(pl => {
+      const puid = parseInt(txt(pl,'PredecessorUID')||'0')
+      if (puid > 0) task._preds.push({
+        pred_uid: puid,
+        link_type: LINK_TYPES[txt(pl,'Type')]||'FS',
+        lag_days: parseLag(txt(pl,'LinkLag'))
+      })
+    })
+    uidMap[uid] = task; tasks.push(task)
+  })
+
+  tasks.forEach(task => {
+    task._preds.forEach(p => {
+      if (uidMap[p.pred_uid]) predecessors.push({
+        task_msp_uid: task.msp_uid, predecessor_msp_uid: p.pred_uid,
+        link_type: p.link_type, lag_days: p.lag_days
+      })
+    })
+    delete task._preds
+  })
+
+  return { project, tasks, predecessors, meta: {
+    parsed_at: new Date().toISOString(),
+    total_tasks: tasks.length,
+    summary_tasks: tasks.filter(t=>t.is_summary).length,
+    leaf_tasks: tasks.filter(t=>!t.is_summary).length,
+    total_preds: predecessors.length,
+    levels: [...new Set(tasks.map(t=>t.outline_level))].sort()
+  }}
+}
+
+// ═══════════════════════════════════════════════════════════
+// EXPORT WEEKLY REPORT (text-based)
+// ═══════════════════════════════════════════════════════════
+function exportWeeklyReport() {
+  const proj = STATE.currentProject
+  const tasks = STATE.tasks
+  const week = getISOWeek(new Date())
+  const year = new Date().getFullYear()
+
+  const late = tasks.filter(t => !t.is_summary && ['critical','delayed','not_started_late'].includes(t.status))
+  const done = tasks.filter(t => !t.is_summary && t.pct_complete === 100)
+
+  const content = `BÁO CÁO TIẾN ĐỘ TUẦN ${week}/${year}
+Dự án: ${proj?.name}
+Ngày lập: ${new Date().toLocaleDateString('vi-VN')}
+========================================
+
+TỔNG QUAN:
+- Tổng công tác: ${tasks.filter(t=>!t.is_summary).length}
+- Hoàn thành: ${done.length}
+- Chậm tiến độ: ${late.length}
+
+CÔNG TÁC CHẬM TIẾN ĐỘ:
+${late.map(t => `- [${t.wbs_code}] ${t.name}
+  KH: ${fmtDate(t.kh_start)} → ${fmtDate(t.kh_finish)}
+  Lệch: ${t.delay_days > 0 ? '+'+t.delay_days : t.delay_days} ngày
+  Ghi chú: ${t.note || '—'}`).join('\n\n') || '  Không có'}
+
+========================================
+Phòng KTTC — VelaE&C`
+
+  const blob = new Blob([content], {type: 'text/plain;charset=utf-8'})
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `BC-TD_${proj?.code}_Tuan${week}_${year}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+  toast('Đã xuất báo cáo!', 'success')
+}
+
+// ═══════════════════════════════════════════════════════════
+// EVENT LISTENERS
+// ═══════════════════════════════════════════════════════════
+document.getElementById('btn-login').addEventListener('click', login)
+document.getElementById('login-pw').addEventListener('keydown', e => { if(e.key==='Enter') login() })
+document.getElementById('btn-logout').addEventListener('click', logout)
+document.getElementById('modal-close').addEventListener('click', closeModal)
+document.querySelectorAll('.sidebar-item').forEach(el => {
+  el.addEventListener('click', () => navigate(el.dataset.page))
+})
+
+// ═══════════════════════════════════════════════════════════
+// AUTO LOGIN CHECK
+// ═══════════════════════════════════════════════════════════
+;(async () => {
+  const { data: { session } } = await sb.auth.getSession()
+  if (session?.user) await initApp(session.user)
+})()
+</script>
+</body>
+</html>
