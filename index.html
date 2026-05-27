@@ -306,6 +306,50 @@ let STATE = {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ROLL-UP: Tính % task cha từ task con (giống MS Project)
+// ═══════════════════════════════════════════════════════════
+function computeRollupPct(tasks) {
+  // Build a map: wbs_code -> task
+  const map = {}
+  tasks.forEach(t => { map[t.wbs_code] = t })
+
+  // Work bottom-up: sort by outline_level desc
+  const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
+
+  sorted.forEach(t => {
+    if (!t.is_summary) return  // leaf tasks keep their own pct
+
+    // Find direct children (wbs starts with t.wbs_code + '.')
+    const children = tasks.filter(c =>
+      c.wbs_code.startsWith(t.wbs_code + '.') &&
+      c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
+    )
+
+    if (!children.length) return
+
+    // Weighted average by kh_duration_days
+    let totalWeight = 0, weightedPct = 0
+    children.forEach(c => {
+      const w = c.kh_duration_days || 1
+      const p = c._rollup_pct !== undefined ? c._rollup_pct : (c.pct_complete || 0)
+      weightedPct += p * w
+      totalWeight += w
+    })
+    t._rollup_pct = totalWeight > 0 ? Math.round(weightedPct / totalWeight) : 0
+  })
+
+  // Assign rollup_pct back — leaf tasks use pct_complete, summary use _rollup_pct
+  tasks.forEach(t => {
+    if (t.is_summary) {
+      t.display_pct = t._rollup_pct !== undefined ? t._rollup_pct : (t.pct_complete || 0)
+    } else {
+      t.display_pct = t.pct_complete || 0
+    }
+  })
+  return tasks
+}
+
+// ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
 function toast(msg, type='') {
@@ -327,7 +371,7 @@ function fmtDate(d) {
 
 function fmtDateShort(d) {
   if (!d) return '—'
-  return new Date(d).toLocaleDateString('vi-VN', {day:'2-digit',month:'2-digit'})
+  return new Date(d).toLocaleDateString('vi-VN', {day:'2-digit',month:'2-digit',year:'numeric'})
 }
 
 function getISOWeek(d) {
@@ -454,7 +498,7 @@ async function loadProjectData(projectId) {
   try {
     const { data: tasks } = await sb.from('v_tasks_with_progress')
       .select('*').eq('project_id', projectId).order('sort_order')
-    STATE.tasks = tasks || []
+    STATE.tasks = computeRollupPct(tasks || [])
 
     // Build progress map
     STATE.progress = {}
@@ -558,7 +602,7 @@ async function loadDashboard() {
       </tr></thead>
       <tbody>
         ${summaries.slice(0,12).map(t => {
-          const pct = t.pct_complete || 0
+          const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
           const delay = t.delay_days
           const dStyle = delay > 7 ? 'color:var(--red);font-weight:600' :
                          delay > 0 ? 'color:var(--amber);font-weight:600' :
@@ -698,10 +742,23 @@ function initWbs() {
 
   // Build tree structure
   const rows = tasks.map(t => {
-    const pct = t.pct_complete || 0
+    const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
     const delay = t.delay_days
     const indent = (t.outline_level - 1) * 20
     const hasChildren = tasks.some(c => c.wbs_code.startsWith(t.wbs_code + '.'))
+
+    // Compute status for summary based on rolled-up pct
+    let rowStatus = t.status
+    if (t.is_summary && t._rollup_pct !== undefined) {
+      const khEnd = t.kh_finish ? new Date(t.kh_finish) : null
+      const now = new Date(); now.setHours(0,0,0,0)
+      if (pct === 100) rowStatus = 'done'
+      else if (khEnd && now > khEnd) rowStatus = 'critical'
+      else if (pct > 0) rowStatus = 'in_progress'
+      else rowStatus = 'not_started'
+    }
+
+    const barColor = pct === 100 ? 'on' : delay > 0 ? 'late' : 'on'
 
     return `
     <div class="wbs-row ${t.is_summary?'summary':''} level-${t.outline_level}"
@@ -715,10 +772,14 @@ function initWbs() {
       <div class="wbs-kh-end">${fmtDateShort(t.kh_finish)}</div>
       <div class="wbs-dur">${t.kh_duration_days ?? '—'}</div>
       <div class="wbs-pct">
-        <div class="pct-bar"><div class="pct-fill ${pct===100?'on':delay>0?'late':'on'}" style="width:${pct}%"></div></div>
-        <div style="font-size:11px;color:var(--gray4);margin-top:2px">${pct}%</div>
+        <div class="pct-bar">
+          <div class="pct-fill ${barColor}" style="width:${pct}%"></div>
+        </div>
+        <div style="font-size:11px;color:${pct>0?'var(--gray7)':'var(--gray4)'};margin-top:2px;font-weight:${pct>0?500:400}">
+          ${pct}%${t.is_summary && pct > 0 ? ' ⟳' : ''}
+        </div>
       </div>
-      <div class="wbs-status">${statusBadge(t.status)}</div>
+      <div class="wbs-status">${statusBadge(rowStatus)}</div>
     </div>`
   }).join('')
 
@@ -979,12 +1040,13 @@ async function saveProgress(taskId) {
         if (upErr) { console.error('Upload error:', upErr); continue }
 
         const { data: urlData } = sb.storage.from(CFG.STORAGE_BUCKET).getPublicUrl(path)
+        const photoUrl = urlData?.publicUrl || `${CFG.SUPABASE_URL}/storage/v1/object/public/${CFG.STORAGE_BUCKET}/${path}`
         await sb.from('task_photos').insert({
           task_id:       taskId,
           project_id:    STATE.currentProject.id,
           week_number:   getISOWeek(now),
           year:          now.getFullYear(),
-          photo_url:     urlData.publicUrl,
+          photo_url:     photoUrl,
           uploaded_by:   STATE.user.email,
           taken_at:      now.toISOString().slice(0,10),
         })
@@ -1051,15 +1113,24 @@ async function loadPhotos() {
   }
 
   el.innerHTML = photos.map(p => `
-    <div style="border-radius:var(--radius);overflow:hidden;border:1px solid var(--gray2);background:white">
-      <img src="${p.photo_url}" style="width:100%;height:140px;object-fit:cover;display:block"
-           onclick="window.open('${p.photo_url}','_blank')" style="cursor:pointer">
-      <div style="padding:8px 10px">
-        <div style="font-size:12px;font-weight:500;color:var(--gray7);margin-bottom:2px">
-          ${p.tasks?.name?.slice(0,30) || '—'}
+    <div style="border-radius:var(--radius);overflow:hidden;border:1px solid var(--gray2);background:white;cursor:pointer"
+         onclick="window.open('${p.photo_url}','_blank')">
+      <div style="width:100%;height:160px;background:var(--gray1);position:relative;overflow:hidden">
+        <img src="${p.photo_url}"
+             style="width:100%;height:160px;object-fit:cover;display:block"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+             crossorigin="anonymous">
+        <div style="display:none;width:100%;height:160px;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--gray4)">
+          <div style="font-size:28px">🖼️</div>
+          <div style="font-size:11px">Nhấn để xem ảnh</div>
         </div>
-        <div style="font-size:11px;color:var(--gray4)">${p.caption||''} · ${p.taken_at||''}</div>
-        <div style="font-size:11px;color:var(--gray4)">${p.uploaded_by||''}</div>
+      </div>
+      <div style="padding:8px 10px">
+        <div style="font-size:12px;font-weight:500;color:var(--gray7);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${p.tasks?.name?.slice(0,35) || '—'}
+        </div>
+        <div style="font-size:11px;color:var(--gray4)">${p.caption || ''}</div>
+        <div style="font-size:11px;color:var(--gray4);margin-top:2px">📅 ${p.taken_at||''} · ${p.uploaded_by?.split('@')[0]||''}</div>
       </div>
     </div>`).join('')
 }
