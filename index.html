@@ -192,8 +192,13 @@ input,select,textarea{font-family:inherit}
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">
-      <h1>⚡ VelaE&C</h1>
-      <p>Hệ thống theo dõi tiến độ thi công</p>
+      <img src="https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png"
+           style="height:64px;width:auto;object-fit:contain;margin-bottom:12px"
+           onerror="this.style.display='none'"
+           alt="Vela E&C">
+      <h1 style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:4px">VelaE&C</h1>
+      <p style="font-size:13px;color:var(--gray4);margin-bottom:2px">Hệ thống theo dõi tiến độ thi công</p>
+      <p style="font-size:11px;color:var(--gray3)">Phát hành bởi: <strong style="color:var(--gray5)">Lê Trần Anh Toàn</strong> · Vela E&C</p>
     </div>
     <div class="login-error" id="login-error"></div>
     <div class="form-group">
@@ -214,7 +219,13 @@ input,select,textarea{font-family:inherit}
 <div id="app" style="display:none">
   <div class="topbar">
     <div class="topbar-left">
-      <div class="topbar-logo">⚡ Vela<span>E&C</span></div>
+      <div class="topbar-logo" style="display:flex;align-items:center;gap:8px">
+        <img src="https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png"
+             style="height:32px;width:auto;object-fit:contain"
+             onerror="this.style.display='none'"
+             alt="Vela E&C Logo">
+        <span style="font-size:15px;font-weight:700;letter-spacing:-.3px">Vela<span style="color:#60A5FA">E&C</span></span>
+      </div>
       <select id="proj-select" class="topbar-proj"></select>
     </div>
     <div class="topbar-right">
@@ -854,12 +865,24 @@ function initWbs() {
         ${'${STATE.role}' !== 'updater' ? `
           <span onclick="event.stopPropagation();openTaskSettings('${t.id}')"
             title="Cài đặt đơn vị/KH"
-            style="opacity:0;font-size:12px;padding:1px 4px;border-radius:4px;cursor:pointer;color:var(--gray4);flex-shrink:0"
+            style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:var(--gray5);flex-shrink:0;background:var(--gray2)"
             class="wbs-settings-btn">⚙️</span>
           ${t.is_summary ? `<span onclick="event.stopPropagation();openKeyTaskModal('${t.id}')"
             title="Chọn Key Task"
-            style="opacity:0;font-size:12px;padding:1px 4px;border-radius:4px;cursor:pointer;color:var(--gray4);flex-shrink:0"
+            style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:var(--gray5);flex-shrink:0;background:var(--gray2)"
             class="wbs-settings-btn">🔑</span>` : ''}
+          <span onclick="event.stopPropagation();editTaskDates('${t.id}')"
+            title="Sửa ngày KH"
+            style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:var(--gray5);flex-shrink:0;background:var(--gray2)"
+            class="wbs-settings-btn">📅</span>
+          <span onclick="event.stopPropagation();renameTask('${t.id}','${t.name.replace(/'/g,"\\'")}' )"
+            title="Đổi tên"
+            style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:var(--gray5);flex-shrink:0;background:var(--gray2)"
+            class="wbs-settings-btn">✏️</span>
+          <span onclick="event.stopPropagation();deleteTask('${t.id}','${t.name.replace(/'/g,"\\'")}' )"
+            title="Xóa task này"
+            style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:#DC2626;flex-shrink:0;background:#FEE2E2"
+            class="wbs-settings-btn">🗑️</span>
         ` : ''}
       </div>
       <div class="wbs-kh-start">${fmtDateShort(t.kh_start)}</div>
@@ -1581,6 +1604,129 @@ function parseMspXml(xmlStr, code, name) {
     total_preds: predecessors.length,
     levels: [...new Set(tasks.map(t=>t.outline_level))].sort()
   }}
+}
+
+// ═══════════════════════════════════════════════════════════
+// XÓA TASK (planner/admin only)
+// ═══════════════════════════════════════════════════════════
+async function deleteTask(taskId, taskName) {
+  if (STATE.role === 'updater') { toast('Không có quyền xóa task', 'error'); return }
+  if (!confirm(`Xóa task này?
+"${taskName}"
+
+Tất cả tiến độ và ảnh liên quan cũng sẽ bị xóa. Không thể hoàn tác.`)) return
+
+  loading(true, 'Đang xóa...')
+  try {
+    // Delete progress + photos first (cascade should handle but be explicit)
+    await sb.from('task_progress').delete().eq('task_id', taskId)
+    await sb.from('task_photos').delete().eq('task_id', taskId)
+    await sb.from('task_predecessors').delete().or(`task_id.eq.${taskId},predecessor_id.eq.${taskId}`)
+    await sb.from('baseline_log').delete().eq('task_id', taskId)
+    const { error } = await sb.from('tasks').delete().eq('id', taskId)
+    if (error) throw error
+
+    await loadProjectData(STATE.currentProject.id)
+    toast('Đã xóa task!', 'success')
+    navigate('wbs')
+  } catch(e) {
+    toast('Lỗi xóa: ' + e.message, 'error')
+  } finally {
+    loading(false)
+  }
+}
+
+// Sửa tên task
+async function renameTask(taskId, currentName) {
+  if (STATE.role === 'updater') { toast('Không có quyền sửa task', 'error'); return }
+  const newName = prompt('Tên mới:', currentName)
+  if (!newName || newName === currentName) return
+
+  loading(true, 'Đang lưu...')
+  const { error } = await sb.from('tasks').update({ name: newName }).eq('id', taskId)
+  loading(false)
+  if (error) { toast('Lỗi: ' + error.message, 'error'); return }
+
+  // Log baseline change
+  await sb.from('baseline_log').insert({
+    task_id: taskId, project_id: STATE.currentProject.id,
+    field_changed: 'name', old_value: currentName, new_value: newName,
+    changed_by: STATE.user.email, reason: 'Sửa tên task trong app'
+  })
+
+  await loadProjectData(STATE.currentProject.id)
+  toast('Đã đổi tên!', 'success')
+  navigate('wbs')
+}
+
+// Sửa ngày KH của task
+async function editTaskDates(taskId) {
+  if (STATE.role === 'updater') { toast('Không có quyền sửa KH', 'error'); return }
+  const task = STATE.tasks.find(t => t.id === taskId)
+  if (!task) return
+
+  openModal(`📅 Sửa ngày KH: ${task.name}`, `
+    <div style="font-size:12px;color:var(--gray5);margin-bottom:14px">
+      Thay đổi này sẽ được ghi vào Baseline Log.
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">KH Bắt đầu</label>
+        <input class="form-input" type="date" id="edit-kh-start" value="${task.kh_start||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">KH Kết thúc</label>
+        <input class="form-input" type="date" id="edit-kh-finish" value="${task.kh_finish||''}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Lý do thay đổi (bắt buộc)</label>
+      <input class="form-input" type="text" id="edit-kh-reason" placeholder="VD: CĐT yêu cầu đẩy nhanh, mặt bằng bàn giao trễ...">
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+    <button class="btn btn-primary" onclick="saveTaskDates('${taskId}')">💾 Lưu</button>
+  `)
+}
+
+async function saveTaskDates(taskId) {
+  const task = STATE.tasks.find(t => t.id === taskId)
+  const newStart  = document.getElementById('edit-kh-start').value || null
+  const newFinish = document.getElementById('edit-kh-finish').value || null
+  const reason    = document.getElementById('edit-kh-reason').value.trim()
+
+  if (!reason) { toast('Vui lòng nhập lý do thay đổi', 'error'); return }
+
+  const newDur = newStart && newFinish
+    ? Math.round((new Date(newFinish) - new Date(newStart)) / 86400000) : task.kh_duration_days
+
+  loading(true, 'Đang lưu...')
+  closeModal()
+  try {
+    const { error } = await sb.from('tasks')
+      .update({ kh_start: newStart, kh_finish: newFinish, kh_duration_days: newDur })
+      .eq('id', taskId)
+    if (error) throw error
+
+    // Log changes
+    const logs = []
+    if (newStart !== task.kh_start) logs.push({ field_changed:'kh_start', old_value:task.kh_start, new_value:newStart })
+    if (newFinish !== task.kh_finish) logs.push({ field_changed:'kh_finish', old_value:task.kh_finish, new_value:newFinish })
+    for (const log of logs) {
+      await sb.from('baseline_log').insert({
+        task_id: taskId, project_id: STATE.currentProject.id,
+        ...log, changed_by: STATE.user.email, reason
+      })
+    }
+
+    await loadProjectData(STATE.currentProject.id)
+    toast('Đã lưu ngày KH mới!', 'success')
+    navigate('wbs')
+  } catch(e) {
+    toast('Lỗi: ' + e.message, 'error')
+  } finally {
+    loading(false)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
