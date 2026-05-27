@@ -643,14 +643,14 @@ function navigate(page) {
     el.classList.toggle('active', el.dataset.page === page)
   })
   const content = document.getElementById('main-content')
-  const pages = { dashboard, wbs, update, photos, compare, importPage }
+  const pages = { dashboard, wbs, photos, compare, gantt, importPage }
   const fn = pages[page === 'import' ? 'importPage' : page]
   if (fn) content.innerHTML = fn()
-  if (page === 'wbs') { initWbs(); }
+  if (page === 'wbs') initWbs()
   if (page === 'dashboard') loadDashboard()
   if (page === 'compare') loadCompare()
   if (page === 'photos') loadPhotos()
-  if (page === 'update') initUpdate()
+  if (page === 'gantt') initGantt()
   if (page === 'import') initImport()
 }
 
@@ -826,7 +826,8 @@ async function loadLaborData() {
         ).join('')}
       </div>`
   } catch(e) {
-    el.innerHTML = `<span style="color:var(--red);font-size:13px">Lỗi đọc dữ liệu: ${e.message}</span>`
+    console.warn('Labor data load failed:', e.message)
+    el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Không tải được dữ liệu nhân công. Kiểm tra quyền Google Sheets API.</span>`
   }
 }
 
