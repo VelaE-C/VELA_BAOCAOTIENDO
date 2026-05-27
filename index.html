@@ -178,6 +178,41 @@ input,select,textarea{font-family:inherit}
 .wbs-row:hover .wbs-settings-btn{opacity:1!important}
 .photo-card:hover .photo-view-label{opacity:1!important}
 
+/* ── Gantt View ── */
+.gantt-view-tabs{display:flex;gap:4px;background:var(--gray1);padding:4px;border-radius:var(--radius-lg);margin-bottom:14px}
+.gv-tab{flex:1;padding:7px 10px;border:none;border-radius:var(--radius);background:transparent;font-size:12px;font-weight:500;cursor:pointer;color:var(--gray5);transition:all .15s}
+.gv-tab.active{background:white;color:var(--gray8);box-shadow:var(--shadow)}
+.gv-wrap{border:1px solid var(--gray2);border-radius:var(--radius-lg);overflow:hidden}
+.gv-head{display:flex;background:var(--navy);color:white;font-size:10px;font-weight:500}
+.gv-col-name{flex-shrink:0;padding:7px 10px;border-right:1px solid rgba(255,255,255,.1)}
+.gv-col-small{flex-shrink:0;padding:7px 6px;text-align:center;border-right:1px solid rgba(255,255,255,.1)}
+.gv-timeline-head{flex:1;position:relative;overflow:hidden;min-height:36px}
+.gv-row{display:flex;border-bottom:0.5px solid var(--gray2)}
+.gv-row:last-child{border-bottom:none}
+.gv-row:hover{background:var(--gray0)}
+.gv-row.sum{background:var(--gray1)}
+.gv-row.sum:hover{background:var(--gray2)}
+.gv-cell-name{flex-shrink:0;padding:5px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.5px solid var(--gray2);cursor:default}
+.gv-cell-small{flex-shrink:0;padding:5px 6px;font-size:11px;text-align:center;border-right:0.5px solid var(--gray2);display:flex;align-items:center;justify-content:center}
+.gv-bars-cell{flex:1;position:relative;overflow:hidden;min-height:28px}
+.gv-bar{position:absolute;height:8px;border-radius:2px}
+.gv-bar.kh{top:4px;background:#9DC3E6}
+.gv-bar.ok{top:16px;background:#A9D18E}
+.gv-bar.late{top:16px;background:#F09595}
+.gv-bar.ahead{top:16px;background:#5DCAA5}
+.gv-now{position:absolute;top:0;bottom:0;width:2px;background:#D85A30;z-index:8;pointer-events:none}
+.gv-period{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;border-right:0.5px solid rgba(255,255,255,.15);font-size:9px;overflow:hidden}
+.gv-period.sub{background:rgba(255,255,255,.05)}
+.gv-delay-tag{position:absolute;font-size:9px;padding:1px 4px;border-radius:6px;white-space:nowrap;z-index:9;pointer-events:none}
+.gv-delay-tag.late{background:#FCEBEB;color:#A32D2D}
+.gv-delay-tag.ok{background:#EAF3DE;color:#3B6D11}
+.gv-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.gv-nav button{padding:5px 14px;border:0.5px solid var(--gray2);border-radius:var(--radius);background:white;cursor:pointer;font-size:13px}
+.gv-nav button:hover{background:var(--gray1)}
+.gv-legend{display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap}
+.gv-leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray5)}
+.gv-leg-box{width:24px;height:7px;border-radius:2px}
+
 /* ── Responsive ── */
 @media(max-width:768px){
   .sidebar{display:none}
@@ -246,6 +281,9 @@ input,select,textarea{font-family:inherit}
       </div>
 
       <div class="sidebar-section">Quản lý</div>
+      <div class="sidebar-item" data-page="gantt">
+        <span class="si-icon">📊</span> Gantt View
+      </div>
       <div class="sidebar-item" data-page="photos">
         <span class="si-icon">📷</span> Ảnh hiện trường
       </div>
@@ -1976,6 +2014,415 @@ async function saveTaskDates(taskId) {
   } finally {
     loading(false)
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// GANTT VIEW — 3 tầng: Tổng quan / Tháng / Tuần
+// ═══════════════════════════════════════════════════════════
+
+let GANTT_VIEW = 'overview'  // 'overview' | 'month' | 'week'
+let GANTT_MONTH_OFFSET = 0   // months from project start
+let GANTT_WEEK_OFFSET  = 0   // weeks from today
+
+function gantt() {
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div>
+      <h2 style="font-size:18px;font-weight:700">Gantt — Tiến độ KH vs Thực tế</h2>
+      <p style="font-size:13px;color:var(--gray4)">${STATE.currentProject?.name||''}</p>
+    </div>
+  </div>
+
+  <div class="gantt-view-tabs">
+    <button class="gv-tab ${GANTT_VIEW==='overview'?'active':''}" onclick="switchGanttView('overview')">
+      📋 Tổng quan (theo quý)
+    </button>
+    <button class="gv-tab ${GANTT_VIEW==='month'?'active':''}" onclick="switchGanttView('month')">
+      📅 Theo tháng
+    </button>
+    <button class="gv-tab ${GANTT_VIEW==='week'?'active':''}" onclick="switchGanttView('week')">
+      🔍 Theo tuần
+    </button>
+  </div>
+
+  <div class="gv-legend">
+    <span class="gv-leg"><span class="gv-leg-box" style="background:#9DC3E6"></span>Kế hoạch (KH)</span>
+    <span class="gv-leg"><span class="gv-leg-box" style="background:#A9D18E"></span>Thực tế — đúng/vượt</span>
+    <span class="gv-leg"><span class="gv-leg-box" style="background:#F09595"></span>Thực tế — chậm</span>
+    <span class="gv-leg"><span class="gv-leg-box" style="background:#D85A30;width:4px;height:14px;border-radius:1px"></span>Hôm nay (NOW)</span>
+  </div>
+
+  <div id="gantt-content"></div>`
+}
+
+function initGantt() {
+  GANTT_MONTH_OFFSET = 0
+  GANTT_WEEK_OFFSET  = 0
+  renderGantt()
+}
+
+function switchGanttView(v) {
+  GANTT_VIEW = v
+  GANTT_MONTH_OFFSET = 0
+  GANTT_WEEK_OFFSET  = 0
+  // Re-render tabs
+  document.querySelectorAll('.gv-tab').forEach((btn,i) => {
+    const views = ['overview','month','week']
+    btn.classList.toggle('active', views[i] === v)
+  })
+  renderGantt()
+}
+
+function renderGantt() {
+  const el = document.getElementById('gantt-content')
+  if (!el) return
+  if (!STATE.tasks.length) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray4)">Chưa có dữ liệu. Import MS Project trước.</div>'
+    return
+  }
+  if (GANTT_VIEW === 'overview') renderGanttOverview(el)
+  else if (GANTT_VIEW === 'month') renderGanttMonth(el)
+  else renderGanttWeek(el)
+}
+
+// ── HELPER: tính delay và bar status ─────────────────────────────────────
+function getGanttStatus(task) {
+  const today = new Date()
+  today.setHours(0,0,0,0)
+  const khEnd = task.kh_finish ? new Date(task.kh_finish) : null
+  const pct = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
+  if (pct === 100) return {status:'done', barClass:'ok'}
+  if (!task.tt_start) {
+    if (khEnd && today > khEnd) return {status:'not_started_late', barClass:'late'}
+    return {status:'not_started', barClass:'ok'}
+  }
+  if (khEnd && today > khEnd && pct < 100) return {status:'late', barClass:'late'}
+  const khDays = task.kh_finish && task.kh_start
+    ? Math.round((new Date(task.kh_finish)-new Date(task.kh_start))/86400000) : 1
+  const elapsed = Math.round((today - new Date(task.kh_start))/86400000)
+  const expectedPct = Math.min(100, Math.round(elapsed/khDays*100))
+  if (pct < expectedPct - 10) return {status:'late', barClass:'late'}
+  return {status:'ok', barClass:'ok'}
+}
+
+function calcDelayDays(task) {
+  if (!task.tt_start && !task.tt_finish) return null
+  const today = new Date(); today.setHours(0,0,0,0)
+  const khEnd = task.kh_finish ? new Date(task.kh_finish) : null
+  const ttStart = task.tt_start ? new Date(task.tt_start) : null
+  const khStart = task.kh_start ? new Date(task.kh_start) : null
+  const pct = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
+
+  if (pct === 100 && task.tt_finish && khEnd) {
+    return Math.round((new Date(task.tt_finish)-khEnd)/86400000)
+  }
+  if (!khEnd) return null
+  if (today > khEnd && pct < 100) {
+    const khDays = Math.round((khEnd - khStart)/86400000)
+    const behindDays = Math.round((100-pct)/100*khDays)
+    return behindDays
+  }
+  if (ttStart && khStart) {
+    return Math.round((ttStart-khStart)/86400000)
+  }
+  return null
+}
+
+// ── Tính % vị trí trên timeline ──────────────────────────────────────────
+function dateToPct(date, rangeStart, rangeDays) {
+  if (!date) return null
+  const d = new Date(date); d.setHours(0,0,0,0)
+  const offset = Math.round((d - rangeStart)/86400000)
+  return Math.max(0, Math.min(100, offset/rangeDays*100))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VIEW 1: TỔNG QUAN (theo quý)
+// ══════════════════════════════════════════════════════════════════════════
+function renderGanttOverview(el) {
+  const proj = STATE.currentProject
+  const rangeStart = new Date(proj.start_date)
+  const rangeEnd   = new Date(proj.finish_date)
+  const rangeDays  = Math.round((rangeEnd-rangeStart)/86400000)
+  const today      = new Date(); today.setHours(0,0,0,0)
+  const nowPct     = dateToPct(today, rangeStart, rangeDays)
+
+  // Chỉ show summary tasks + level 1-3
+  const tasks = STATE.tasks.filter(t => t.is_summary && t.outline_level <= 3)
+
+  // Build quarter labels
+  const quarters = []
+  let cur = new Date(rangeStart.getFullYear(), Math.floor(rangeStart.getMonth()/3)*3, 1)
+  while (cur <= rangeEnd) {
+    const qNum = Math.floor(cur.getMonth()/3)+1
+    const label = `Q${qNum} ${cur.getFullYear()}`
+    const leftPct = dateToPct(cur, rangeStart, rangeDays)
+    quarters.push({label, leftPct})
+    cur = new Date(cur.getFullYear(), cur.getMonth()+3, 1)
+  }
+
+  const NAME_W = 220, PCT_W = 55, DELAY_W = 65
+
+  let html = `
+  <div style="font-size:11px;color:var(--gray4);margin-bottom:6px">
+    Timeline: ${fmtDate(proj.start_date)} → ${fmtDate(proj.finish_date)} · ${rangeDays} ngày · Hiển thị ${tasks.length} hạng mục
+  </div>
+  <div class="gv-wrap">
+    <div class="gv-head">
+      <div class="gv-col-name" style="width:${NAME_W}px">Hạng mục</div>
+      <div class="gv-col-small" style="width:${PCT_W}px">% HT</div>
+      <div class="gv-timeline-head" style="position:relative;overflow:hidden">
+        ${quarters.map(q=>`<div class="gv-period" style="left:${q.leftPct}%;min-width:60px">${q.label}</div>`).join('')}
+        <div class="gv-now" style="left:${nowPct}%">
+          <div style="position:absolute;top:2px;left:3px;font-size:9px;color:#D85A30;font-weight:600;white-space:nowrap">NOW</div>
+        </div>
+      </div>
+      <div class="gv-col-small" style="width:${DELAY_W}px">Lệch</div>
+    </div>`
+
+  tasks.forEach(t => {
+    const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
+    const {barClass} = getGanttStatus(t)
+    const delay = calcDelayDays(t)
+    const delayLabel = delay === null ? '—' : delay > 0 ? `+${delay}d` : delay < 0 ? `${delay}d` : '0d'
+    const delayColor = delay > 0 ? '#A32D2D' : delay < 0 ? '#3B6D11' : 'var(--gray4)'
+
+    const khL = dateToPct(t.kh_start, rangeStart, rangeDays)
+    const khR = dateToPct(t.kh_finish, rangeStart, rangeDays)
+    const khW = khR - khL
+
+    const ttL = t.tt_start ? dateToPct(t.tt_start, rangeStart, rangeDays) : null
+    const ttR = t.tt_finish ? dateToPct(t.tt_finish, rangeStart, rangeDays)
+      : (t.tt_start ? dateToPct(today, rangeStart, rangeDays) : null)
+    const ttW = ttR !== null ? ttR - ttL : 0
+
+    const indent = (t.outline_level-1)*14
+    const pctBg = pct===100?'#DCFCE7':barClass==='late'?'#FEE2E2':pct===0?'var(--gray1)':'#DBEAFE'
+    const pctColor = pct===100?'#166534':barClass==='late'?'#991B1B':pct===0?'var(--gray4)':'#1E40AF'
+
+    html += `
+    <div class="gv-row sum" style="min-height:28px">
+      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${8+indent}px;font-weight:${t.outline_level<=2?600:500};font-size:${t.outline_level<=1?13:12}px" title="${t.name}">
+        ${t.name}
+      </div>
+      <div class="gv-cell-small" style="width:${PCT_W}px">
+        <span style="font-size:11px;font-weight:600;padding:2px 5px;border-radius:6px;background:${pctBg};color:${pctColor}">${pct}%</span>
+      </div>
+      <div class="gv-bars-cell">
+        ${khL!==null?`<div class="gv-bar kh" style="left:${khL.toFixed(1)}%;width:${Math.max(.5,khW).toFixed(1)}%"></div>`:''}
+        ${ttL!==null?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${Math.max(.5,ttW).toFixed(1)}%"></div>`:''}
+        <div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>
+        ${delay!==null && delay>0 ? `<span class="gv-delay-tag late" style="left:${Math.min(93,nowPct+0.5).toFixed(1)}%;top:12px">+${delay}d</span>` : ''}
+        ${delay!==null && delay<0 ? `<span class="gv-delay-tag ok" style="left:${Math.min(93,nowPct+0.5).toFixed(1)}%;top:12px">${delay}d</span>` : ''}
+      </div>
+      <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:12px;font-weight:600;color:${delayColor}">${delayLabel}</div>
+    </div>`
+  })
+
+  html += '</div>'
+  el.innerHTML = html
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VIEW 2: THEO THÁNG (3 tháng, nav ‹ ›)
+// ══════════════════════════════════════════════════════════════════════════
+function renderGanttMonth(el) {
+  const proj = STATE.currentProject
+  const projStart = new Date(proj.start_date)
+  const today = new Date(); today.setHours(0,0,0,0)
+
+  // Window: 3 months starting from projStart + offset
+  const winStart = new Date(projStart.getFullYear(), projStart.getMonth() + GANTT_MONTH_OFFSET, 1)
+  const winEnd   = new Date(winStart.getFullYear(), winStart.getMonth()+3, 0) // last day of 3rd month
+  const rangeDays = Math.round((winEnd - winStart)/86400000) + 1
+  const nowPct = dateToPct(today, winStart, rangeDays)
+
+  // Month label
+  const months = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12']
+  const m0 = winStart.getMonth(), y0 = winStart.getFullYear()
+  const periodLabels = [0,1,2].map(i => {
+    const m = (m0+i)%12
+    const y = y0 + Math.floor((m0+i)/12)
+    const mStart = new Date(y, m, 1)
+    const mDays = new Date(y, m+1, 0).getDate()
+    const leftPct = dateToPct(mStart, winStart, rangeDays)
+    const widthPct = mDays/rangeDays*100
+    return {label:`${months[m]}/${y}`, leftPct, widthPct}
+  })
+
+  const tasks = STATE.tasks.filter(t => !t.is_summary || t.outline_level <= 4)
+    .filter(t => {
+      if (!t.kh_start || !t.kh_finish) return false
+      const s = new Date(t.kh_start), e = new Date(t.kh_finish)
+      return s <= winEnd && e >= winStart
+    }).slice(0, 40)
+
+  const NAME_W = 210, PCT_W = 50, DELAY_W = 60
+
+  let html = `
+  <div class="gv-nav">
+    <button onclick="GANTT_MONTH_OFFSET--;renderGantt()">‹ Trước</button>
+    <span style="font-size:13px;font-weight:500">${months[m0]}–${months[(m0+2)%12]} / ${y0}</span>
+    <button onclick="GANTT_MONTH_OFFSET++;renderGantt()">Sau ›</button>
+  </div>
+  <div class="gv-wrap">
+    <div class="gv-head">
+      <div class="gv-col-name" style="width:${NAME_W}px">Công tác</div>
+      <div class="gv-col-small" style="width:${PCT_W}px">%</div>
+      <div class="gv-timeline-head" style="position:relative;overflow:hidden">
+        ${periodLabels.map(p=>`<div class="gv-period" style="left:${p.leftPct.toFixed(1)}%;width:${p.widthPct.toFixed(1)}%">${p.label}</div>`).join('')}
+        ${nowPct>=0&&nowPct<=100 ? `<div class="gv-now" style="left:${nowPct.toFixed(1)}%">
+          <div style="position:absolute;top:2px;left:3px;font-size:9px;color:#D85A30;font-weight:600">NOW</div>
+        </div>` : ''}
+      </div>
+      <div class="gv-col-small" style="width:${DELAY_W}px">Lệch</div>
+    </div>`
+
+  if (!tasks.length) {
+    html += `<div style="padding:30px;text-align:center;color:var(--gray4);font-size:13px">Không có task trong khoảng thời gian này</div>`
+  }
+
+  tasks.forEach(t => {
+    const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
+    const {barClass} = getGanttStatus(t)
+    const delay = calcDelayDays(t)
+    const delayLabel = delay===null?'—':delay>0?`+${delay}d`:delay<0?`${delay}d`:'0d'
+    const delayColor = delay>0?'#A32D2D':delay<0?'#3B6D11':'var(--gray4)'
+    const indent = (t.outline_level-1)*12
+
+    const khL = dateToPct(t.kh_start, winStart, rangeDays)
+    const khR = dateToPct(t.kh_finish, winStart, rangeDays)
+    const khW = Math.max(0, Math.min(100, khR) - Math.max(0, khL))
+    const khLc = Math.max(0, khL)
+
+    const ttL = t.tt_start ? Math.max(0, dateToPct(t.tt_start, winStart, rangeDays)) : null
+    const ttRaw = t.tt_finish ? dateToPct(t.tt_finish, winStart, rangeDays)
+      : (t.tt_start ? Math.min(100, dateToPct(today, winStart, rangeDays)) : null)
+    const ttW = ttRaw!==null ? Math.max(0, Math.min(100,ttRaw)-ttL) : 0
+
+    const pctBg = pct===100?'#DCFCE7':barClass==='late'?'#FEE2E2':pct===0?'var(--gray1)':'#DBEAFE'
+    const pctFg = pct===100?'#166534':barClass==='late'?'#991B1B':pct===0?'var(--gray4)':'#1E40AF'
+
+    html += `
+    <div class="gv-row ${t.is_summary?'sum':''}" style="min-height:28px" onclick="${!t.is_summary?`openUpdateModal('${t.id}')`:''}" style="${!t.is_summary?'cursor:pointer':''}">
+      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${8+indent}px;font-weight:${t.is_summary?600:400};font-size:12px" title="${t.name}">
+        ${t.name}
+      </div>
+      <div class="gv-cell-small" style="width:${PCT_W}px">
+        <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:6px;background:${pctBg};color:${pctFg}">${pct}%</span>
+      </div>
+      <div class="gv-bars-cell">
+        ${khW>0?`<div class="gv-bar kh" style="left:${khLc.toFixed(1)}%;width:${khW.toFixed(1)}%"></div>`:''}
+        ${ttL!==null&&ttW>0?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${ttW.toFixed(1)}%"></div>`:''}
+        ${nowPct>=0&&nowPct<=100?`<div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>`:''}
+        ${delay!==null&&delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(92,nowPct+0.5).toFixed(1)}%;top:12px">+${delay}d</span>`:''}
+      </div>
+      <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:12px;font-weight:600;color:${delayColor}">${delayLabel}</div>
+    </div>`
+  })
+
+  html += '</div><div style="font-size:11px;color:var(--gray4);margin-top:6px;text-align:center">Click vào công tác lá để cập nhật tiến độ</div>'
+  el.innerHTML = html
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VIEW 3: THEO TUẦN (6 tuần, nav ‹ ›)
+// ══════════════════════════════════════════════════════════════════════════
+function renderGanttWeek(el) {
+  const today = new Date(); today.setHours(0,0,0,0)
+
+  // Window: 6 tuần, center around today + offset
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - (today.getDay()||7)+1 + GANTT_WEEK_OFFSET*7 - 14)
+  const winStart = monday
+  const winEnd   = new Date(monday); winEnd.setDate(monday.getDate()+41) // 6 weeks
+  const rangeDays = 42
+
+  const nowPct = dateToPct(today, winStart, rangeDays)
+
+  // Week labels
+  const weekLabels = Array.from({length:6}, (_,i) => {
+    const wStart = new Date(winStart); wStart.setDate(winStart.getDate()+i*7)
+    const wn = getISOWeek(wStart)
+    return {
+      label: `T.${wn}
+${wStart.getDate()}/${wStart.getMonth()+1}`,
+      leftPct: i/6*100,
+      widthPct: 100/6
+    }
+  })
+
+  const tasks = STATE.tasks.filter(t => {
+    if (!t.kh_start || !t.kh_finish) return false
+    const s = new Date(t.kh_start), e = new Date(t.kh_finish)
+    return s <= winEnd && e >= winStart && !t.is_summary
+  }).slice(0, 35)
+
+  const NAME_W = 200, PCT_W = 50, DELAY_W = 65
+  const winLabel = `Tuần ${getISOWeek(winStart)}–${getISOWeek(winEnd)} / ${winStart.getFullYear()}`
+
+  let html = `
+  <div class="gv-nav">
+    <button onclick="GANTT_WEEK_OFFSET--;renderGantt()">‹ Trước</button>
+    <span style="font-size:13px;font-weight:500">${winLabel}</span>
+    <button onclick="GANTT_WEEK_OFFSET++;renderGantt()">Sau ›</button>
+  </div>
+  <div class="gv-wrap">
+    <div class="gv-head">
+      <div class="gv-col-name" style="width:${NAME_W}px">Công tác</div>
+      <div class="gv-col-small" style="width:${PCT_W}px">%</div>
+      <div class="gv-timeline-head" style="position:relative;overflow:hidden;min-height:40px">
+        ${weekLabels.map(w=>`<div class="gv-period" style="left:${w.leftPct.toFixed(1)}%;width:${w.widthPct.toFixed(1)}%;white-space:pre;flex-direction:column;gap:1px;font-size:9px">${w.label}</div>`).join('')}
+        ${nowPct>=0&&nowPct<=100?`<div class="gv-now" style="left:${nowPct.toFixed(1)}%">
+          <div style="position:absolute;bottom:2px;left:3px;font-size:9px;color:#D85A30;font-weight:600">NOW</div>
+        </div>`:''}
+      </div>
+      <div class="gv-col-small" style="width:${DELAY_W}px">Lệch ngày</div>
+    </div>`
+
+  if (!tasks.length) {
+    html += `<div style="padding:30px;text-align:center;color:var(--gray4);font-size:13px">Không có công tác nào trong 6 tuần này</div>`
+  }
+
+  tasks.forEach(t => {
+    const pct = t.pct_complete || 0
+    const {barClass} = getGanttStatus(t)
+    const delay = calcDelayDays(t)
+    const delayLabel = delay===null?'—':delay>0?`+${delay} ngày`:delay<0?`${Math.abs(delay)} ngày vượt`:'Đúng KH'
+    const delayColor = delay===null?'var(--gray4)':delay>0?'#A32D2D':delay<0?'#3B6D11':'#3B6D11'
+
+    const khL = Math.max(0, dateToPct(t.kh_start, winStart, rangeDays))
+    const khR = Math.min(100, dateToPct(t.kh_finish, winStart, rangeDays))
+    const khW = Math.max(0, khR-khL)
+
+    const ttL = t.tt_start ? Math.max(0, dateToPct(t.tt_start, winStart, rangeDays)) : null
+    const ttRaw = t.tt_finish ? Math.min(100, dateToPct(t.tt_finish, winStart, rangeDays))
+      : (t.tt_start ? Math.min(100, dateToPct(today, winStart, rangeDays)) : null)
+    const ttW = ttRaw!==null ? Math.max(0, ttRaw-ttL) : 0
+
+    const pctBg = pct===100?'#DCFCE7':barClass==='late'?'#FEE2E2':pct===0?'var(--gray1)':'#DBEAFE'
+    const pctFg = pct===100?'#166534':barClass==='late'?'#991B1B':pct===0?'var(--gray4)':'#1E40AF'
+
+    html += `
+    <div class="gv-row" style="min-height:30px;cursor:pointer" onclick="openUpdateModal('${t.id}')">
+      <div class="gv-cell-name" style="width:${NAME_W}px;font-size:12px" title="${t.name}">
+        ${t.name}
+      </div>
+      <div class="gv-cell-small" style="width:${PCT_W}px">
+        <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:6px;background:${pctBg};color:${pctFg}">${pct}%</span>
+      </div>
+      <div class="gv-bars-cell">
+        ${khW>0?`<div class="gv-bar kh" style="left:${khL.toFixed(1)}%;width:${khW.toFixed(1)}%"></div>`:''}
+        ${ttL!==null&&ttW>0?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${ttW.toFixed(1)}%"></div>`:''}
+        ${nowPct>=0&&nowPct<=100?`<div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>`:''}
+        ${delay!==null&&delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(90,nowPct+0.5).toFixed(1)}%;top:14px">+${delay}d</span>`:''}
+      </div>
+      <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center">${delayLabel}</div>
+    </div>`
+  })
+
+  html += '</div><div style="font-size:11px;color:var(--gray4);margin-top:6px;text-align:center">Click vào bất kỳ công tác nào để cập nhật tiến độ trực tiếp</div>'
+  el.innerHTML = html
 }
 
 // ═══════════════════════════════════════════════════════════
