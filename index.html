@@ -712,11 +712,7 @@ async function loadDashboard() {
             <td>${statusBadge(t.status)}</td>
             <td style="${dStyle}">${delay != null ? (delay>0?'+'+delay:delay)+'d' : '—'}</td>
           </tr>`
-        }).join('')
-  // Make images clickable to open in new tab
-  el.querySelectorAll('img').forEach(img => {
-    img.style.cursor = 'pointer'
-  })}
+        }).join('')}
       </tbody>
     </table>`
 
