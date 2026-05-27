@@ -1190,8 +1190,13 @@ async function saveProgress(taskId) {
       for (const file of pendingPhotos) {
         const ext  = file.name.split('.').pop()
         const path = `${STATE.currentProject.id}/${taskId}/${Date.now()}.${ext}`
+        // Đọc file thành ArrayBuffer để upload raw binary, tránh multipart/form-data
+        const arrayBuffer = await file.arrayBuffer()
         const { data: upData, error: upErr } = await sb.storage
-          .from(CFG.STORAGE_BUCKET).upload(path, file, { upsert: true })
+          .from(CFG.STORAGE_BUCKET).upload(path, arrayBuffer, {
+            upsert: true,
+            contentType: file.type || 'image/jpeg',
+          })
         if (upErr) { console.error('Upload error:', upErr); continue }
 
         // Lưu path thay vì URL — generate signed URL khi hiển thị
