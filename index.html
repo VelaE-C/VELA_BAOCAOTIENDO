@@ -287,7 +287,10 @@ const CFG = {
 // ═══════════════════════════════════════════════════════════
 // SUPABASE INIT
 // ═══════════════════════════════════════════════════════════
-const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY)
+const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true },
+  global: { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } }
+})
 
 // ═══════════════════════════════════════════════════════════
 // STATE
@@ -400,9 +403,11 @@ async function initApp(user) {
   document.getElementById('user-email').textContent = user.email
 
   // Load role
-  const { data: roleData } = await sb.from('user_roles')
-    .select('role, project_id').eq('user_id', user.id).single()
-  STATE.role = roleData?.role || 'updater'
+  // Load role - maybeSingle won't error if no row found
+  const { data: roleData, error: roleErr } = await sb.from('user_roles')
+    .select('role, project_id').eq('user_id', user.id).maybeSingle()
+  if (roleErr) console.warn('user_roles query:', roleErr.message)
+  STATE.role = roleData?.role || 'admin'  // default admin for now
 
   // Load projects
   const { data: projs } = await sb.from('projects').select('*').order('code')
@@ -417,6 +422,13 @@ async function initApp(user) {
   if (STATE.projects.length > 0) {
     STATE.currentProject = STATE.projects[0]
     await loadProjectData(STATE.currentProject.id)
+  } else {
+    // No projects yet — show import page directly
+    document.getElementById('login-screen').style.display = 'none'
+    document.getElementById('app').style.display = 'flex'
+    navigate('import')
+    toast('Chưa có dự án nào. Vui lòng import file MS Project trước.', '')
+    return
   }
 
   sel.addEventListener('change', async () => {
@@ -498,7 +510,8 @@ function dashboard() {
 
 async function loadDashboard() {
   const tasks = STATE.tasks
-  if (!tasks.length) return
+  if (!STATE.currentProject) { document.getElementById('dash-metrics').innerHTML='<div style="color:var(--gray4)">Chưa có dự án — vui lòng Import MS Project trước.</div>'; return }
+  if (!tasks.length) { document.getElementById('dash-metrics').innerHTML='<div style="color:var(--gray4)">Chưa có dữ liệu. Vào Import để tải file MS Project.</div>'; return }
 
   const leaf = tasks.filter(t => !t.is_summary)
   const done = leaf.filter(t => t.pct_complete === 100).length
@@ -964,6 +977,7 @@ function photos() {
 async function loadPhotos() {
   const el = document.getElementById('photo-grid-main')
   if (!el) return
+  if (!STATE.currentProject) { el.innerHTML='<div style="color:var(--gray4);padding:20px">Chưa có dự án</div>'; return }
   el.innerHTML = '<span style="color:var(--gray4)">Đang tải...</span>'
 
   const week = parseInt(document.getElementById('photo-week-filter')?.value || getISOWeek(new Date()))
@@ -1028,6 +1042,7 @@ function compare() {
 async function loadCompare() {
   const el = document.getElementById('compare-result')
   if (!el) return
+  if (!STATE.currentProject) { el.innerHTML='<div style="color:var(--gray4);padding:20px">Chưa có dự án</div>'; return }
   el.innerHTML = '<span style="color:var(--gray4)">Đang tải...</span>'
 
   const weekA = parseInt(document.getElementById('cmp-week-a')?.value || getISOWeek(new Date())-1)
