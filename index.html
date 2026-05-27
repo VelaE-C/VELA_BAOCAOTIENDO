@@ -1755,7 +1755,7 @@ async function openTaskSettings(taskId) {
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Đơn vị đo lường</label>
-        <select class="form-input" id="ts-unit">
+        <select class="form-input" id="ts-unit" onchange="document.getElementById('ts-unit-custom').style.display=this.value==='other'?'':'none'">
           ${['%','căn','m²','m³','m','cái','bộ','tấn','kg'].map(u =>
             `<option value="${u}" ${task.unit===u?'selected':''}>${u}</option>`
           ).join('')}
@@ -1773,11 +1773,7 @@ async function openTaskSettings(taskId) {
       <input class="form-input" type="text" id="ts-unit-text" placeholder="VD: chuyến, lượt..."
         value="${!['%','căn','m²','m³','m','cái','bộ','tấn','kg'].includes(task.unit)?task.unit||'':''}">
     </div>
-    <script>
-      document.getElementById('ts-unit').onchange = function() {
-        document.getElementById('ts-unit-custom').style.display = this.value === 'other' ? '' : 'none';
-      }
-    </script>
+
     ${task.is_summary ? `
     <div style="margin-top:4px;padding:10px;background:var(--lblue);border-radius:6px;font-size:12px;color:var(--gray6)">
       💡 Task này là hạng mục cha — bạn cũng có thể <a href="#" onclick="closeModal();openKeyTaskModal('${taskId}');return false" style="color:var(--blue)">chọn Key Task</a> để điều khiển tiến độ.
