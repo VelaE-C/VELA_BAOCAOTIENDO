@@ -2426,6 +2426,23 @@ function renderGanttOverview(el) {
 
   const NAME_W = 340, PCT_W = 55, DELAY_W = 110
 
+  // Build childMap for collapse logic
+  const _childMap = {}
+  STATE.tasks.forEach(t => {
+    if (!t.wbs_code) return
+    const parts = t.wbs_code.split('.')
+    if (parts.length > 1) {
+      const parentWbs = parts.slice(0,-1).join('.')
+      if (!_childMap[parentWbs]) _childMap[parentWbs] = []
+      _childMap[parentWbs].push(t.wbs_code)
+    }
+  })
+  // Default: collapse level >= 4
+  const _collapsed = new Set(
+    STATE.tasks.filter(t => t.is_summary && t.outline_level >= 4).map(t => t.wbs_code)
+  )
+
+
   let rows = ''
   STATE.tasks.forEach(t => {
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
@@ -2450,9 +2467,23 @@ function renderGanttOverview(el) {
     const fw = t.outline_level <= 1 ? 700 : t.outline_level <= 2 ? 600 : t.is_summary ? 500 : 400
     const fs = t.outline_level <= 1 ? 13 : 12
 
-    rows += `<div class="gv-row" style="min-height:${t.is_summary?28:24}px;background:${rowBg}">
-      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${6+indent}px;font-weight:${fw};font-size:${fs}px;white-space:normal;line-height:1.4;padding-top:5px;padding-bottom:5px" title="${t.name.replace(/"/g,"'")}">
-        ${t.is_summary?'▸ ':''}${t.name}
+    const _hasCh = !!_childMap[t.wbs_code]
+    const _isColl = _collapsed.has(t.wbs_code)
+    // Check if ancestor collapsed
+    const _parts = (t.wbs_code||'').split('.')
+    const _hidden = _parts.some((_,i) => {
+      if (i===_parts.length-1) return false
+      return _collapsed.has(_parts.slice(0,i+1).join('.'))
+    })
+    const _icon = _hasCh ? (_isColl ? '▶' : '▼') : ''
+
+    rows += `<div class="gv-row" data-wbs="${t.wbs_code}" data-level="${t.outline_level}"
+      style="min-height:${t.is_summary?28:24}px;background:${rowBg};${_hidden?'display:none':''}"
+      onclick="${_hasCh ? `ganttToggleRow(this,'${t.wbs_code}')` : `openUpdateModal('${t.id}')`}"
+      >
+      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${6+indent}px;font-weight:${fw};font-size:${fs}px;white-space:normal;line-height:1.4;padding-top:5px;padding-bottom:5px;display:flex;align-items:flex-start;gap:3px;cursor:${_hasCh?'pointer':'default'}" title="${t.name.replace(/"/g,"'")}">
+        <span style="flex-shrink:0;width:12px;font-size:10px;margin-top:2px;color:var(--gray4)">${_icon}</span>
+        <span>${t.name}</span>
       </div>
       <div class="gv-cell-small" style="width:${PCT_W}px">
         <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:6px;background:${pctBg};color:${pctFg}">${pct}%</span>
@@ -2485,6 +2516,38 @@ function renderGanttOverview(el) {
     </div>
     <div style="overflow-y:auto;max-height:calc(100vh - 340px)">${rows}</div>
   </div>`
+}
+
+// ── Toggle collapse/expand hàng Gantt ────────────────────────────────────
+function ganttToggleRow(rowEl, wbsCode) {
+  const container = rowEl.parentElement
+  const allRows = container.querySelectorAll('.gv-row')
+  const isNowCollapsed = rowEl.querySelector('span')?.textContent?.trim() === '▶'
+
+  // Toggle icon
+  const iconEl = rowEl.querySelector('span:first-child')
+  if (iconEl) iconEl.textContent = isNowCollapsed ? '▼' : '▶'
+
+  // Show/hide children
+  allRows.forEach(r => {
+    const rWbs = r.dataset.wbs
+    if (!rWbs || rWbs === wbsCode) return
+    if (rWbs.startsWith(wbsCode + '.')) {
+      if (isNowCollapsed) {
+        // Expand: only show direct children, keep deeper collapsed
+        const rel = rWbs.slice(wbsCode.length + 1)
+        if (!rel.includes('.')) {
+          r.style.display = ''
+        }
+      } else {
+        // Collapse all descendants
+        r.style.display = 'none'
+        // Reset their icons to collapsed
+        const icon = r.querySelector('span:first-child')
+        if (icon && (icon.textContent.trim() === '▼')) icon.textContent = '▶'
+      }
+    }
+  })
 }
 
 // ══════════════════════════════════════════════════════════════════════════
