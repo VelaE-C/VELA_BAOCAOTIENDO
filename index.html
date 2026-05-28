@@ -2206,6 +2206,19 @@ function gantt() {
     </button>
   </div>
 
+  <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px" id="gantt-collapse-btns" style="display:none">
+    <button id="btn-collapse-gantt"
+      onclick="window._ganttCollapsed=true;document.getElementById('btn-collapse-gantt').style.background='var(--navy)';document.getElementById('btn-collapse-gantt').style.color='white';document.getElementById('btn-expand-gantt').style.background='white';document.getElementById('btn-expand-gantt').style.color='var(--gray6)';renderGantt()"
+      style="padding:6px 14px;font-size:12px;font-weight:500;border:1px solid var(--gray2);border-radius:var(--radius);background:var(--navy);color:white;cursor:pointer">
+      Thu gọn (3 cấp)
+    </button>
+    <button id="btn-expand-gantt"
+      onclick="window._ganttCollapsed=false;document.getElementById('btn-expand-gantt').style.background='var(--navy)';document.getElementById('btn-expand-gantt').style.color='white';document.getElementById('btn-collapse-gantt').style.background='white';document.getElementById('btn-collapse-gantt').style.color='var(--gray6)';renderGantt()"
+      style="padding:6px 14px;font-size:12px;font-weight:500;border:1px solid var(--gray2);border-radius:var(--radius);background:white;color:var(--gray6);cursor:pointer">
+      Mở rộng (toàn bộ)
+    </button>
+  </div>
+
   <div class="gv-legend">
     <span class="gv-leg"><span class="gv-leg-box" style="background:#9DC3E6"></span>Kế hoạch (KH)</span>
     <span class="gv-leg"><span class="gv-leg-box" style="background:#A9D18E"></span>Thực tế — đúng/vượt</span>
@@ -2219,6 +2232,12 @@ function gantt() {
 function initGantt() {
   GANTT_MONTH_OFFSET = 0
   GANTT_WEEK_OFFSET  = 0
+  window._ganttCollapsed = true
+  // Show collapse buttons for overview (default view)
+  setTimeout(() => {
+    const btnRow = document.getElementById('gantt-collapse-btns')
+    if (btnRow) btnRow.style.display = 'flex'
+  }, 50)
   renderGantt()
 }
 
@@ -2226,11 +2245,13 @@ function switchGanttView(v) {
   GANTT_VIEW = v
   GANTT_MONTH_OFFSET = 0
   GANTT_WEEK_OFFSET  = 0
-  // Re-render tabs
   document.querySelectorAll('.gv-tab').forEach((btn,i) => {
     const views = ['overview','month','week']
     btn.classList.toggle('active', views[i] === v)
   })
+  // Show/hide collapse buttons
+  const btnRow = document.getElementById('gantt-collapse-btns')
+  if (btnRow) btnRow.style.display = v === 'overview' ? 'flex' : 'none'
   renderGantt()
 }
 
@@ -2370,22 +2391,10 @@ function renderGanttOverview(el) {
   if (!window._ganttCollapsed) window._ganttCollapsed = true
 
   let html = `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-    <div style="font-size:11px;color:var(--gray4)">
-      Timeline: ${fmtDate(proj.start_date)} → ${fmtDate(proj.finish_date)} · ${rangeDays} ngày · ${tasks.length} công tác
-    </div>
-    <div style="display:flex;gap:6px">
-      <button onclick="window._ganttCollapsed=true;renderGantt()"
-        style="padding:5px 12px;font-size:12px;font-weight:500;border:0.5px solid var(--gray2);border-radius:var(--radius);background:${window._ganttCollapsed?'var(--navy)':'white'};color:${window._ganttCollapsed?'white':'var(--gray6)'};cursor:pointer;position:relative;z-index:20">
-        Thu gọn (3 cấp)
-      </button>
-      <button onclick="window._ganttCollapsed=false;renderGantt()"
-        style="padding:5px 12px;font-size:12px;font-weight:500;border:0.5px solid var(--gray2);border-radius:var(--radius);background:${!window._ganttCollapsed?'var(--navy)':'white'};color:${!window._ganttCollapsed?'white':'var(--gray6)'};cursor:pointer;position:relative;z-index:20">
-        Mở rộng (toàn bộ)
-      </button>
-    </div>
+  <div style="font-size:11px;color:var(--gray4);margin-bottom:8px">
+    Timeline: ${fmtDate(proj.start_date)} → ${fmtDate(proj.finish_date)} · ${rangeDays} ngày · ${tasks.length} công tác
   </div>
-  <div class="gv-wrap" style="overflow-y:${window._ganttCollapsed?'visible':'auto'};max-height:${window._ganttCollapsed?'none':'72vh'};position:relative">
+  <div class="gv-wrap" style="overflow-y:${window._ganttCollapsed?'visible':'auto'};max-height:${window._ganttCollapsed?'none':'72vh'}">
     <div class="gv-head">
       <div class="gv-col-name" style="width:${NAME_W}px">Hạng mục</div>
       <div class="gv-col-small" style="width:${PCT_W}px">% HT</div>
