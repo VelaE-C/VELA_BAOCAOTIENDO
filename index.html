@@ -193,7 +193,7 @@ input,select,textarea{font-family:inherit}
 .gv-row:hover{background:var(--gray0)}
 .gv-row.sum{background:var(--gray1)}
 .gv-row.sum:hover{background:var(--gray2)}
-.gv-cell-name{flex-shrink:0;padding:5px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.5px solid var(--gray2);cursor:default}
+.gv-cell-name{flex-shrink:0;padding:5px 8px;font-size:12px;white-space:normal;word-break:break-word;border-right:0.5px solid var(--gray2);cursor:default;line-height:1.4}
 .gv-cell-small{flex-shrink:0;padding:5px 6px;font-size:11px;text-align:center;border-right:0.5px solid var(--gray2);display:flex;align-items:center;justify-content:center}
 .gv-bars-cell{flex:1;position:relative;overflow:hidden;min-height:28px}
 .gv-bar{position:absolute;height:8px;border-radius:2px}
@@ -953,13 +953,11 @@ function initWbs() {
         ${(() => {
           if (t.is_summary) return statusBadge(rowStatus)
           const d = calcProgressDetail(t)
-          if (d.done) return '<span class="badge badge-blue">✅ Hoàn thành</span>'
-          if (d.delayDays === null) return statusBadge(rowStatus)
-          if (d.delayDays <= 0) return '<span class="badge badge-green">🟢 Đúng KH</span>'
-          if (d.hasUnit) {
-            return '<span class="badge badge-red" style="white-space:normal;line-height:1.3">🔴 Trễ ~' + d.delayDays + 'd<br>-' + d.missingQty + ' ' + d.unit + '</span>'
-          }
-          return '<span class="badge badge-red" style="white-space:normal;line-height:1.3">🔴 Trễ ~' + d.delayDays + 'd<br>thiếu ' + d.missingPct + '%</span>'
+          if (d.done) return '<span class="badge badge-green" style="font-size:10px">✅ Hoàn thành</span>'
+          if (d.delayDays === null || d.delayDays === undefined) return statusBadge(rowStatus)
+          if (d.delayDays <= 0) return '<span class="badge badge-green" style="font-size:10px">🟢 Đúng KH</span>'
+          const qty = d.hasUnit ? (d.missingQty||0) + ' ' + (d.unit||'') : (d.missingPct||0) + '%'
+          return '<span class="badge badge-red" style="white-space:normal;line-height:1.4;font-size:10px">Trễ ' + d.delayDays + 'ngày<br>thiếu ' + qty + '</span>'
         })()}
       </div>
     </div>`
@@ -2298,7 +2296,7 @@ function getGanttStatus(task) {
   if (hasUnit && task.planned_quantity > 0) {
     const velocity    = task.planned_quantity / khDays
     const expectedQty = Math.round(velocity * Math.min(elapsedDays, khDays))
-    const actQty      = task.actual_quantity || 0
+    const actQty      = (task.actual_quantity != null ? task.actual_quantity : 0)
     if (actQty < expectedQty * 0.9) return {status:'late', barClass:'late'}
   } else {
     const expectedPct = Math.min(100, Math.round(elapsedDays / khDays * 100))
@@ -2317,13 +2315,14 @@ function calcProgressDetail(task) {
   const pct     = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
   const hasUnit = task.unit && task.unit !== '%' && task.planned_quantity > 0
   const planQty = task.planned_quantity || 0
-  const actQty  = task.actual_quantity  || 0
+  const actQty  = (task.actual_quantity != null && task.actual_quantity !== undefined)
+                  ? task.actual_quantity : 0   // fix undefined
   const khDays  = (khStart && khEnd) ? Math.round((khEnd - khStart) / 86400000) : 0
 
   // ── 1. Đã hoàn thành: so ngày TT xong vs KH xong ──────────────────────
   if (pct === 100 && ttFinish && khEnd) {
     const d = Math.round((ttFinish - khEnd) / 86400000)
-    return { delayDays:d, label: d>0?`+${d}d trễ`:d<0?`${Math.abs(d)}d vượt`:'Đúng KH', done:true, hasUnit:false }
+    return { delayDays:d, label: d>0?`Trễ ${d} ngày`:d<0?`Vượt ${Math.abs(d)} ngày`:'Đúng KH', done:true, hasUnit:false }
   }
 
   // ── 2. Chưa bắt đầu ────────────────────────────────────────────────────
@@ -2331,7 +2330,7 @@ function calcProgressDetail(task) {
     // Nếu đã qua ngày KH bắt đầu mà chưa làm → tính số ngày trễ bắt đầu
     if (khStart && today > khStart) {
       const startDelay = Math.round((today - khStart) / 86400000)
-      return { delayDays: startDelay, label: `+${startDelay}d chưa BĐ`, done:false, hasUnit:false }
+      return { delayDays: startDelay, label: `Chưa BĐ · trễ ${startDelay} ngày`, done:false, hasUnit:false }
     }
     return { delayDays:null, label:'—', done:false, hasUnit:false }
   }
@@ -2366,8 +2365,8 @@ function calcProgressDetail(task) {
       missingQty,
       unit: task.unit,
       label: totalDelay > 0
-        ? `🔴 +${totalDelay}d · -${missingQty} ${task.unit}`
-        : `✓ Đúng KH`,
+        ? `Trễ ${totalDelay} ngày · thiếu ${missingQty} ${task.unit}`
+        : missingQty === 0 && pct > 0 ? `Đúng KH` : `Đúng KH`,
       done: false, hasUnit: true
     }
   } else {
@@ -2388,8 +2387,8 @@ function calcProgressDetail(task) {
       delayDays: totalDelay,
       missingPct,
       label: totalDelay > 0
-        ? `🔴 +${totalDelay}d · -${missingPct}%`
-        : `✓ Đúng KH`,
+        ? `Trễ ${totalDelay} ngày · thiếu ${missingPct}%`
+        : `Đúng KH`,
       done: false, hasUnit: false
     }
   }
@@ -2425,7 +2424,7 @@ function renderGanttOverview(el) {
     cur = new Date(cur.getFullYear(), cur.getMonth()+3, 1)
   }
 
-  const NAME_W = 300, PCT_W = 55, DELAY_W = 90
+  const NAME_W = 340, PCT_W = 55, DELAY_W = 110
 
   let rows = ''
   STATE.tasks.forEach(t => {
@@ -2452,7 +2451,7 @@ function renderGanttOverview(el) {
     const fs = t.outline_level <= 1 ? 13 : 12
 
     rows += `<div class="gv-row" style="min-height:${t.is_summary?28:24}px;background:${rowBg}">
-      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${6+indent}px;font-weight:${fw};font-size:${fs}px" title="${t.name.replace(/"/g,"'")}">
+      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${6+indent}px;font-weight:${fw};font-size:${fs}px;white-space:normal;line-height:1.4;padding-top:5px;padding-bottom:5px" title="${t.name.replace(/"/g,"'")}">
         ${t.is_summary?'▸ ':''}${t.name}
       </div>
       <div class="gv-cell-small" style="width:${PCT_W}px">
@@ -2522,7 +2521,7 @@ function renderGanttMonth(el) {
     return new Date(a.kh_start)-new Date(b.kh_start)
   }).slice(0,50)
 
-  const NAME_W=240, PCT_W=50, DELAY_W=75
+  const NAME_W=260, PCT_W=50, DELAY_W=110
   let rows = ''
   tasks.forEach(t => {
     const pct = t.pct_complete||0
@@ -2545,8 +2544,8 @@ function renderGanttMonth(el) {
 
     rows += `<div class="gv-row ${t.is_summary?'sum':''}" style="min-height:26px;cursor:pointer" onclick="${!t.is_summary?`openUpdateModal('${t.id}')`:''}" >
       <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${6+indent}px;font-weight:${t.is_summary?600:400};font-size:12px;display:flex;align-items:center;gap:4px" title="${t.name.replace(/"/g,"'")}">
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</span>
-        ${isOverdue?'<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#FEE2E2;color:#991B1B;flex-shrink:0">TRỄ</span>':''}
+        <span style="flex:1;white-space:normal;line-height:1.4">${t.name}</span>
+        ${isOverdue?'<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#FEE2E2;color:#991B1B;flex-shrink:0;margin-top:2px">TRỄ</span>':''}
       </div>
       <div class="gv-cell-small" style="width:${PCT_W}px">
         <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:6px;background:${pctBg};color:${pctFg}">${pct}%</span>
@@ -2555,9 +2554,9 @@ function renderGanttMonth(el) {
         ${khW>0?`<div class="gv-bar kh" style="left:${khL.toFixed(1)}%;width:${khW.toFixed(1)}%"></div>`:''}
         ${ttL!==null&&ttW>0?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${ttW.toFixed(1)}%"></div>`:''}
         ${nowPct>=0&&nowPct<=100?`<div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>`:''}
-        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(92,nowPct+0.5).toFixed(1)}%;top:13px">+${delay}d</span>`:''}
+        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(92,nowPct+0.5).toFixed(1)}%;top:13px">${delay}d trễ</span>`:''}
       </div>
-      <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center">${detail.label}</div>
+      <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center;white-space:normal;line-height:1.4">${detail.label}</div>
     </div>`
   })
 
@@ -2614,7 +2613,7 @@ ${ws.getDate()}/${ws.getMonth()+1}`, left:i/6*100 }
   const winLabel = `Tuần ${getISOWeek(winStart)}–${getISOWeek(winEnd)} / ${winStart.getFullYear()}`
   document.getElementById('gantt-period-label') && (document.getElementById('gantt-period-label').textContent = winLabel)
 
-  const NAME_W=220, PCT_W=50, DELAY_W=100
+  const NAME_W=240, PCT_W=50, DELAY_W=110
   let rows = ''
   tasks.forEach(t => {
     const pct = t.pct_complete||0
@@ -2636,8 +2635,8 @@ ${ws.getDate()}/${ws.getMonth()+1}`, left:i/6*100 }
 
     rows += `<div class="gv-row" style="min-height:28px;cursor:pointer" onclick="openUpdateModal('${t.id}')">
       <div class="gv-cell-name" style="width:${NAME_W}px;font-size:12px;display:flex;align-items:center;gap:4px" title="${t.name.replace(/"/g,"'")}">
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</span>
-        ${isOverdue?'<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#FEE2E2;color:#991B1B;flex-shrink:0">TRỄ</span>':''}
+        <span style="flex:1;white-space:normal;line-height:1.4">${t.name}</span>
+        ${isOverdue?'<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#FEE2E2;color:#991B1B;flex-shrink:0;margin-top:2px">TRỄ</span>':''}
       </div>
       <div class="gv-cell-small" style="width:${PCT_W}px">
         <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:6px;background:${pctBg};color:${pctFg}">${pct}%</span>
@@ -2646,9 +2645,9 @@ ${ws.getDate()}/${ws.getMonth()+1}`, left:i/6*100 }
         ${khW>0?`<div class="gv-bar kh" style="left:${khL.toFixed(1)}%;width:${khW.toFixed(1)}%"></div>`:''}
         ${ttL!==null&&ttW>0?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${ttW.toFixed(1)}%"></div>`:''}
         ${nowPct>=0&&nowPct<=100?`<div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>`:''}
-        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(90,nowPct+0.5).toFixed(1)}%;top:14px">+${delay}d</span>`:''}
+        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(90,nowPct+0.5).toFixed(1)}%;top:14px">${delay}d trễ</span>`:''}
       </div>
-      <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center">${detail.label}</div>
+      <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center;white-space:normal;line-height:1.4">${detail.label}</div>
     </div>`
   })
 
