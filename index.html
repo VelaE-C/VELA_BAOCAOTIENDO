@@ -451,15 +451,27 @@ function computeRollupDelay(tasks) {
 
     parent._delay = maxDelay
     if (maxDelay > 0) {
-      // Label từ worst child, thêm prefix
       const childLabel = worstChild?._delayDetail?.hasUnit
         ? `Trễ ${maxDelay} ngày · thiếu ${worstChild._delayDetail.missingQty} ${worstChild._delayDetail.unit}`
         : `Trễ ${maxDelay} ngày`
       parent._delayLabel = childLabel
+      parent._delay = maxDelay
     } else {
-      parent._delayLabel = 'Đúng KH'
+      // Tất cả đúng hoặc sớm → lấy max "sớm" (delayDays âm = sớm)
+      const minDelay = directChildren.reduce((mn,c) => Math.min(mn, c._delay||0), 0)
+      if (minDelay < 0) {
+        const bestChild = directChildren.find(c => (c._delay||0) === minDelay)
+        const aheadDays = Math.abs(minDelay)
+        parent._delayLabel = bestChild?._delayDetail?.hasUnit
+          ? `Sớm ${aheadDays} ngày · dư ${bestChild._delayDetail.aheadQty||0} ${bestChild._delayDetail.unit}`
+          : `Sớm ${aheadDays} ngày`
+        parent._delay = minDelay  // âm = sớm
+      } else {
+        parent._delayLabel = 'Đúng KH'
+        parent._delay = 0
+      }
     }
-    parent._delayDetail = { delayDays: maxDelay, label: parent._delayLabel, hasUnit: false }
+    parent._delayDetail = { delayDays: parent._delay, label: parent._delayLabel, hasUnit: false }
   })
 
   return tasks
@@ -574,6 +586,7 @@ function statusBadge(status) {
     'not_started':      ['badge-gray','⚫ Chưa BĐ'],
     'not_started_late': ['badge-red','🔴 Chưa BĐ - Trễ'],
     'in_progress':      ['badge-blue','🔵 Đang TH'],
+    'ahead':            ['badge-green','🟢 Sớm TĐ'],
   }
   const [cls, lbl] = map[status] || ['badge-gray', status]
   return `<span class="badge ${cls}">${lbl}</span>`
@@ -2338,8 +2351,9 @@ function getGanttStatus(task) {
 
   // Summary: use rollup delay
   if (task.is_summary && task._delay !== undefined) {
-    if (task._delay > 7) return {status:'critical', barClass:'late'}
-    if (task._delay > 0) return {status:'delayed', barClass:'late'}
+    if (task._delay > 7)  return {status:'critical', barClass:'late'}
+    if (task._delay > 0)  return {status:'delayed',  barClass:'late'}
+    if (task._delay < 0)  return {status:'ahead',    barClass:'ahead'}
     return {status:'ok', barClass:'ok'}
   }
 
@@ -2389,7 +2403,13 @@ function calcProgressDetail(task) {
   // ── 1. Đã hoàn thành: so ngày TT xong vs KH xong ──────────────────────
   if (pct === 100 && ttFinish && khEnd) {
     const d = Math.round((ttFinish - khEnd) / 86400000)
-    return { delayDays:d, label: d>0?`Trễ ${d} ngày`:d<0?`Vượt ${Math.abs(d)} ngày`:'Đúng KH', done:true, hasUnit:false }
+    return {
+      delayDays: d,
+      label: d > 0  ? `Trễ ${d} ngày`
+           : d < 0  ? `Hoàn thành sớm ${Math.abs(d)} ngày`
+           : `Đúng KH`,
+      done: true, hasUnit: false
+    }
   }
 
   // ── 2. Chưa bắt đầu ────────────────────────────────────────────────────
@@ -2427,13 +2447,21 @@ function calcProgressDetail(task) {
     }
     const totalDelay = Math.max(delayDays, overrunDays)
 
+    // Tính buffer (dư so với KH)
+    const aheadQty  = Math.max(0, actQty - expectedQty)
+    const aheadDays = aheadQty > 0 ? Math.round(aheadQty / velocity) : 0
+
     return {
-      delayDays: totalDelay,
-      missingQty,
+      delayDays:  totalDelay > 0 ? totalDelay : -aheadDays,
+      missingQty: totalDelay > 0 ? missingQty : 0,
+      aheadQty,
+      aheadDays,
       unit: task.unit,
       label: totalDelay > 0
         ? `Trễ ${totalDelay} ngày · thiếu ${missingQty} ${task.unit}`
-        : missingQty === 0 && pct > 0 ? `Đúng KH` : `Đúng KH`,
+        : aheadDays > 0
+        ? `Sớm ${aheadDays} ngày · dư ${aheadQty} ${task.unit}`
+        : `Đúng KH`,
       done: false, hasUnit: true
     }
   } else {
@@ -2450,11 +2478,19 @@ function calcProgressDetail(task) {
     }
     const totalDelay = Math.max(delayDays, overrunDays)
 
+    // Tính buffer %
+    const aheadPct  = Math.max(0, pct - expectedPct)
+    const aheadDays = aheadPct > 0 ? Math.round(aheadPct / velocityPct) : 0
+
     return {
-      delayDays: totalDelay,
-      missingPct,
+      delayDays:  totalDelay > 0 ? totalDelay : -aheadDays,
+      missingPct: totalDelay > 0 ? missingPct : 0,
+      aheadPct,
+      aheadDays,
       label: totalDelay > 0
         ? `Trễ ${totalDelay} ngày · thiếu ${missingPct}%`
+        : aheadDays > 0
+        ? `Sớm ${aheadDays} ngày · dư ${aheadPct}%`
         : `Đúng KH`,
       done: false, hasUnit: false
     }
@@ -2517,7 +2553,7 @@ function renderGanttOverview(el) {
     const detail = calcProgressDetail(t)
     const delay = detail.delayDays
     const delayLabel = detail.label
-    const delayColor = delay > 0 ? '#A32D2D' : delay < 0 ? '#3B6D11' : 'var(--gray4)'
+    const delayColor = delay > 0 ? '#A32D2D' : delay < 0 ? '#0D6E4E' : 'var(--gray4)'
 
     const khL = dateToPct(t.kh_start, rangeStart, rangeDays)
     const khR = dateToPct(t.kh_finish, rangeStart, rangeDays)
