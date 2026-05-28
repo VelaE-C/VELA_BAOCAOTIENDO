@@ -38,11 +38,12 @@ input,select,textarea{font-family:inherit}
 
 /* ── Layout ── */
 #app{display:flex;flex-direction:column;min-height:100vh}
-.topbar{background:var(--navy);color:white;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.topbar{background:var(--navy);color:white;padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 .topbar-left{display:flex;align-items:center;gap:12px}
-.topbar-logo{font-size:16px;font-weight:700;letter-spacing:-.3px}
+.topbar-logo{font-size:17px;font-weight:700;letter-spacing:-.3px}
 .topbar-logo span{color:#60A5FA}
-.topbar-proj{font-size:13px;color:#94A3B8;padding:4px 10px;background:rgba(255,255,255,.08);border-radius:6px;cursor:pointer}
+.topbar-proj{font-size:14px;font-weight:500;color:white;padding:6px 14px;background:rgba(255,255,255,.12);border-radius:8px;cursor:pointer;border:0.5px solid rgba(255,255,255,.2);min-width:220px}
+.topbar-proj option{background:var(--navy);color:white;font-size:14px}
 .topbar-right{display:flex;align-items:center;gap:10px}
 .topbar-user{font-size:12px;color:#94A3B8}
 .btn-logout{font-size:12px;padding:5px 12px;background:rgba(255,255,255,.1);border:none;color:white;border-radius:6px}
@@ -266,6 +267,9 @@ input,select,textarea{font-family:inherit}
     </div>
     <div class="topbar-right">
       <span class="topbar-user" id="user-email"></span>
+      <button id="btn-delete-proj" onclick="confirmDeleteProject()"
+        style="display:none;font-size:12px;padding:5px 10px;background:rgba(220,38,38,.2);border:1px solid rgba(220,38,38,.4);color:#FCA5A5;border-radius:6px;cursor:pointer"
+        title="Xóa dự án này">🗑️ Xóa dự án</button>
       <button class="btn-logout" id="btn-logout">Đăng xuất</button>
     </div>
   </div>
@@ -612,9 +616,12 @@ async function initApp(user) {
   if (STATE.role === 'updater') {
     document.querySelector('[data-page="import"]')?.style.setProperty('display','none')
   }
-  // Hide planner-only sidebar items for updater
   if (STATE.role === 'updater') {
     document.querySelectorAll('[data-role="planner"]').forEach(el => el.style.display='none')
+  }
+  // Hiện nút xóa dự án cho admin/planner
+  if (['admin','planner'].includes(STATE.role)) {
+    document.getElementById('btn-delete-proj').style.display = 'inline-flex'
   }
 
   navigate('dashboard')
@@ -2063,6 +2070,96 @@ async function saveTaskDates(taskId) {
     navigate('wbs')
   } catch(e) {
     toast('Lỗi: ' + e.message, 'error')
+  } finally {
+    loading(false)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// XÓA DỰ ÁN
+// ═══════════════════════════════════════════════════════════
+async function confirmDeleteProject() {
+  const proj = STATE.currentProject
+  if (!proj) return
+  if (!['admin','planner'].includes(STATE.role)) {
+    toast('Không có quyền xóa dự án', 'error'); return
+  }
+
+  openModal('🗑️ Xóa dự án', `
+    <div style="padding:14px;background:#FEE2E2;border-radius:var(--radius);margin-bottom:14px">
+      <div style="font-size:14px;font-weight:600;color:#991B1B;margin-bottom:6px">⚠️ Cảnh báo — Không thể hoàn tác!</div>
+      <div style="font-size:13px;color:#7F1D1D">
+        Xóa dự án <strong>"${proj.name}"</strong> sẽ xóa toàn bộ:
+        <ul style="margin:6px 0 0 16px;line-height:2">
+          <li>Tất cả tasks (${STATE.tasks.length} tasks)</li>
+          <li>Toàn bộ tiến độ đã cập nhật</li>
+          <li>Toàn bộ ảnh hiện trường</li>
+          <li>Baseline log</li>
+        </ul>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nhập tên dự án để xác nhận xóa:</label>
+      <input class="form-input" type="text" id="confirm-proj-name"
+        placeholder="${proj.code}" style="border-color:#F87171">
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+    <button class="btn btn-danger" onclick="deleteProject('${proj.id}','${proj.code}')">🗑️ Xác nhận xóa</button>
+  `)
+}
+
+async function deleteProject(projectId, projectCode) {
+  const input = document.getElementById('confirm-proj-name')?.value?.trim()
+  if (input !== projectCode) {
+    toast(`Tên không khớp. Nhập đúng: "${projectCode}"`, 'error'); return
+  }
+  closeModal()
+  loading(true, 'Đang xóa toàn bộ dữ liệu dự án...')
+  try {
+    // Xóa theo thứ tự: photos → progress → predecessors → baseline → tasks → project
+    loading(true, 'Xóa ảnh...')
+    await sb.from('task_photos').delete().eq('project_id', projectId)
+
+    loading(true, 'Xóa tiến độ...')
+    await sb.from('task_progress').delete().eq('project_id', projectId)
+
+    loading(true, 'Xóa predecessors...')
+    await sb.from('task_predecessors').delete().eq('project_id', projectId)
+
+    loading(true, 'Xóa baseline log...')
+    await sb.from('baseline_log').delete().eq('project_id', projectId)
+
+    loading(true, 'Xóa tasks...')
+    await sb.from('tasks').delete().eq('project_id', projectId)
+
+    loading(true, 'Xóa dự án...')
+    const { error } = await sb.from('projects').delete().eq('id', projectId)
+    if (error) throw error
+
+    // Reload projects list
+    const { data: projs } = await sb.from('projects').select('*').order('code')
+    STATE.projects = projs || []
+    STATE.currentProject = null
+    STATE.tasks = []
+
+    const sel = document.getElementById('proj-select')
+    sel.innerHTML = STATE.projects.map(p =>
+      `<option value="${p.id}">${p.code} — ${p.name}</option>`
+    ).join('')
+
+    if (STATE.projects.length > 0) {
+      STATE.currentProject = STATE.projects[0]
+      sel.value = STATE.currentProject.id
+      await loadProjectData(STATE.currentProject.id)
+      toast('Đã xóa dự án! Đang hiển thị dự án kế tiếp.', 'success')
+      navigate('import')
+    } else {
+      toast('Đã xóa dự án!', 'success')
+      navigate('import')
+    }
+  } catch(e) {
+    toast('Lỗi xóa: ' + e.message, 'error')
   } finally {
     loading(false)
   }
