@@ -1079,8 +1079,37 @@ function openUpdateModal(taskId) {
     </div>
 
     <div style="background:var(--gray1);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;font-size:13px">
-      <div style="color:var(--gray5);font-size:11px;margin-bottom:4px">📅 Ngày cập nhật (tự động = hôm nay)</div>
-      <div style="font-weight:600;color:var(--navy)">${new Date().toLocaleDateString('vi-VN', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</div>
+      <div style="color:var(--gray5);font-size:11px;margin-bottom:8px">📅 Ngày cập nhật</div>
+      ${STATE.role === 'planner' || STATE.role === 'admin' ? `
+      <!-- PLANNER: nhập ngày thủ công -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+        <div>
+          <div style="font-size:11px;color:var(--gray5);margin-bottom:4px">Ngày bắt đầu TT</div>
+          <input type="date" id="upd-tt-start-date" value="${t.tt_start||today}"
+            style="width:100%;padding:6px 8px;border:1px solid var(--gray3);border-radius:6px;font-size:13px">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--gray5);margin-bottom:4px">
+            Ngày hoàn thành TT <span style="color:var(--amber);font-size:10px">(chỉ điền khi 100%)</span>
+          </div>
+          <input type="date" id="upd-tt-finish-date" value="${t.tt_finish||''}"
+            style="width:100%;padding:6px 8px;border:1px solid var(--gray3);border-radius:6px;font-size:13px">
+        </div>
+      </div>
+      ` : `
+      <!-- UPDATER: chỉ xem ngày, không chỉnh -->
+      <div style="display:flex;gap:16px;margin-top:4px;flex-wrap:wrap">
+        <div style="font-size:12px;color:var(--gray5)">
+          Bắt đầu TT: <strong style="color:var(--gray7)">${t.tt_start ? fmtDate(t.tt_start) : 'Chưa có'}</strong>
+        </div>
+        <div style="font-size:12px;color:var(--gray5)">
+          Hoàn thành TT: <strong style="color:var(--gray7)">${t.tt_finish ? fmtDate(t.tt_finish) : '—'}</strong>
+        </div>
+        <div style="font-size:11px;color:var(--gray4)">
+          Ghi nhận hôm nay: <strong>${new Date().toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})}</strong>
+        </div>
+      </div>
+      `}
     </div>
 
     ${t.unit && t.unit !== '%' && t.planned_quantity ? `
@@ -1191,12 +1220,10 @@ async function saveProgress(taskId) {
   const now     = new Date()
   const today   = now.toISOString().slice(0,10)
 
-  // Auto-compute TT dates:
-  // tt_start = ngày đầu tiên nhập % > 0 (giữ nguyên nếu đã có)
-  // tt_finish = hôm nay nếu % = 100, null nếu chưa xong
+  // Auto-compute TT dates (có thể bị override bởi input ngày thủ công)
   const ttStart = (task.tt_start && task.tt_start !== '') ? task.tt_start
                 : (pct > 0 ? today : null)
-  const ttEnd   = pct === 100 ? today : null
+  const ttEnd   = null  // sẽ được xử lý trong saveProgress theo role
 
   loading(true, 'Đang lưu tiến độ...')
   closeModal()
@@ -1206,11 +1233,35 @@ async function saveProgress(taskId) {
     const qtyEl = document.getElementById('upd-qty')
   const actualQty = qtyEl ? parseFloat(qtyEl.value)||null : null
 
+  // Admin/planner có thể chọn ngày thủ công
+  const startInput  = document.getElementById('upd-tt-start-date')
+  const finishInput = document.getElementById('upd-tt-finish-date')
+
+  let finalStart = ttStart
+  let finalEnd   = ttEnd
+
+  if (STATE.role === 'planner' || STATE.role === 'admin') {
+    // Planner/admin: dùng ngày từ input thủ công
+    if (startInput?.value) finalStart = startInput.value
+    if (finishInput?.value) {
+      finalEnd = finishInput.value
+    } else if (pct === 100) {
+      // 100% nhưng không điền ngày hoàn thành → lấy ngày bắt đầu TT
+      finalEnd = finalStart || today
+    }
+    // else: chưa xong, finalEnd = null (giữ nguyên)
+  } else {
+    // Updater: ngày hoàn toàn tự động
+    // tt_start giữ nguyên nếu đã có, set hôm nay nếu lần đầu nhập
+    finalStart = (task.tt_start && task.tt_start !== '') ? task.tt_start : (pct > 0 ? today : null)
+    finalEnd   = pct === 100 ? today : null
+  }
+
   const { error: progErr } = await sb.from('task_progress').insert({
       task_id:            taskId,
       project_id:         STATE.currentProject.id,
-      tt_start:           ttStart,
-      tt_finish:          ttEnd,
+      tt_start:           finalStart,
+      tt_finish:          finalEnd,
       pct_complete:       pct,
       actual_quantity:    actualQty,
       unit:               task.unit || '%',
