@@ -2206,18 +2206,7 @@ function gantt() {
     </button>
   </div>
 
-  <div id="gantt-collapse-btns" style="display:none;justify-content:flex-end;gap:6px;margin-bottom:8px">
-    <button id="btn-collapse-gantt"
-      onclick="window._ganttCollapsed=true;document.getElementById('btn-collapse-gantt').style.background='var(--navy)';document.getElementById('btn-collapse-gantt').style.color='white';document.getElementById('btn-expand-gantt').style.background='white';document.getElementById('btn-expand-gantt').style.color='var(--gray6)';renderGantt()"
-      style="padding:6px 14px;font-size:12px;font-weight:500;border:1px solid var(--gray2);border-radius:var(--radius);background:var(--navy);color:white;cursor:pointer">
-      Thu gọn (3 cấp)
-    </button>
-    <button id="btn-expand-gantt"
-      onclick="window._ganttCollapsed=false;document.getElementById('btn-expand-gantt').style.background='var(--navy)';document.getElementById('btn-expand-gantt').style.color='white';document.getElementById('btn-collapse-gantt').style.background='white';document.getElementById('btn-collapse-gantt').style.color='var(--gray6)';renderGantt()"
-      style="padding:6px 14px;font-size:12px;font-weight:500;border:1px solid var(--gray2);border-radius:var(--radius);background:white;color:var(--gray6);cursor:pointer">
-      Mở rộng (toàn bộ)
-    </button>
-  </div>
+  <div id="gantt-collapse-btns"></div>
 
   <div class="gv-legend">
     <span class="gv-leg"><span class="gv-leg-box" style="background:#9DC3E6"></span>Kế hoạch (KH)</span>
@@ -2233,17 +2222,48 @@ function initGantt() {
   GANTT_MONTH_OFFSET = 0
   GANTT_WEEK_OFFSET  = 0
   window._ganttCollapsed = true
-  // Show collapse buttons for overview (default view)
-  setTimeout(() => {
-    const btnRow = document.getElementById('gantt-collapse-btns')
-    if (btnRow) {
-      btnRow.style.display = 'flex'
-      btnRow.style.justifyContent = 'flex-end'
-      btnRow.style.gap = '6px'
-      btnRow.style.marginBottom = '8px'
-    }
-  }, 100)
   renderGantt()
+  updateCollapseButtons()
+}
+
+function updateCollapseButtons() {
+  const container = document.getElementById('gantt-collapse-btns')
+  if (!container) return
+  if (GANTT_VIEW !== 'overview') {
+    container.innerHTML = ''
+    return
+  }
+  // Render nút trực tiếp vào DOM — không dùng template literal
+  container.style.display = 'flex'
+  container.style.justifyContent = 'flex-end'
+  container.style.gap = '6px'
+  container.style.marginBottom = '8px'
+
+  const btn1 = document.createElement('button')
+  btn1.textContent = 'Thu gọn (3 cấp)'
+  btn1.style.cssText = 'padding:6px 14px;font-size:12px;font-weight:500;border:1px solid #CBD5E1;border-radius:8px;cursor:pointer;transition:all .15s'
+  btn1.style.background = window._ganttCollapsed ? '#1A2B4A' : 'white'
+  btn1.style.color      = window._ganttCollapsed ? 'white'   : '#475569'
+  btn1.onclick = function() {
+    window._ganttCollapsed = true
+    renderGantt()
+    updateCollapseButtons()
+  }
+
+  const btn2 = document.createElement('button')
+  btn2.textContent = 'Mở rộng (toàn bộ)'
+  btn2.style.cssText = 'padding:6px 14px;font-size:12px;font-weight:500;border:1px solid #CBD5E1;border-radius:8px;cursor:pointer;transition:all .15s'
+  btn2.style.background = !window._ganttCollapsed ? '#1A2B4A' : 'white'
+  btn2.style.color      = !window._ganttCollapsed ? 'white'   : '#475569'
+  btn2.onclick = function() {
+    window._ganttCollapsed = false
+    renderGantt()
+    updateCollapseButtons()
+  }
+
+  container.innerHTML = ''
+  container.appendChild(btn1)
+  container.appendChild(btn2)
 }
 
 function switchGanttView(v) {
@@ -2254,10 +2274,8 @@ function switchGanttView(v) {
     const views = ['overview','month','week']
     btn.classList.toggle('active', views[i] === v)
   })
-  // Show/hide collapse buttons
-  const btnRow = document.getElementById('gantt-collapse-btns')
-  if (btnRow) btnRow.style.display = v === 'overview' ? 'flex' : 'none'
   renderGantt()
+  updateCollapseButtons()
 }
 
 function renderGantt() {
