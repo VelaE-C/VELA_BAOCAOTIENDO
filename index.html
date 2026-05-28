@@ -411,6 +411,61 @@ function computeRollupPct(tasks) {
   return tasks
 }
 
+// ── Roll-up delay: cha = max delay của các con trực tiếp ────────────────
+function computeRollupDelay(tasks) {
+  // Build today once
+  const today = new Date(); today.setHours(0,0,0,0)
+
+  // Work bottom-up
+  const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
+
+  sorted.forEach(parent => {
+    if (!parent.is_summary) {
+      // Leaf: tính delay trực tiếp, cache vào _delay
+      const d = calcProgressDetail(parent)
+      parent._delay = d.delayDays || 0
+      parent._delayLabel = d.label
+      parent._delayDetail = d
+      return
+    }
+
+    // Summary: max delay của con trực tiếp
+    const directChildren = tasks.filter(c =>
+      c.wbs_code && parent.wbs_code &&
+      c.wbs_code.startsWith(parent.wbs_code + '.') &&
+      c.wbs_code.split('.').length === parent.wbs_code.split('.').length + 1
+    )
+
+    if (!directChildren.length) {
+      // Không có con → tính như leaf
+      const d = calcProgressDetail(parent)
+      parent._delay = d.delayDays || 0
+      parent._delayLabel = d.label
+      parent._delayDetail = d
+      return
+    }
+
+    // Max delay trong con (đã được tính ở bước trước vì sort bottom-up)
+    const maxDelay = directChildren.reduce((mx, c) => Math.max(mx, c._delay || 0), 0)
+    const worstChild = directChildren.find(c => (c._delay || 0) === maxDelay)
+
+    parent._delay = maxDelay
+    if (maxDelay > 0) {
+      // Label từ worst child, thêm prefix
+      const childLabel = worstChild?._delayDetail?.hasUnit
+        ? `Trễ ${maxDelay} ngày · thiếu ${worstChild._delayDetail.missingQty} ${worstChild._delayDetail.unit}`
+        : `Trễ ${maxDelay} ngày`
+      parent._delayLabel = childLabel
+    } else {
+      parent._delayLabel = 'Đúng KH'
+    }
+    parent._delayDetail = { delayDays: maxDelay, label: parent._delayLabel, hasUnit: false }
+  })
+
+  return tasks
+}
+
+
 // ═══════════════════════════════════════════════════════════
 // COMPUTE PARENT DATES từ task con (lưu vào DB)
 // kh_start cha = MIN start con, kh_finish cha = MAX finish con
@@ -633,6 +688,7 @@ async function loadProjectData(projectId) {
     const { data: tasks } = await sb.from('v_tasks_with_progress')
       .select('*').eq('project_id', projectId).order('sort_order')
     STATE.tasks = computeRollupPct(tasks || [])
+    computeRollupDelay(STATE.tasks)  // roll-up delay bottom-up
 
     // Build progress map
     STATE.progress = {}
@@ -2280,6 +2336,13 @@ function getGanttStatus(task) {
 
   if (pct === 100) return {status:'done', barClass:'ok'}
 
+  // Summary: use rollup delay
+  if (task.is_summary && task._delay !== undefined) {
+    if (task._delay > 7) return {status:'critical', barClass:'late'}
+    if (task._delay > 0) return {status:'delayed', barClass:'late'}
+    return {status:'ok', barClass:'ok'}
+  }
+
   if (!task.tt_start) {
     if (khStart && today > khStart) return {status:'not_started_late', barClass:'late'}
     return {status:'not_started', barClass:'ok'}
@@ -2308,6 +2371,10 @@ function getGanttStatus(task) {
 
 // ── Tam suất: tính lệch theo velocity ────────────────────────────────────
 function calcProgressDetail(task) {
+  // Summary tasks: use pre-computed rollup delay (max of children)
+  if (task.is_summary && task._delayDetail !== undefined) {
+    return task._delayDetail
+  }
   const today   = new Date(); today.setHours(0,0,0,0)
   const khStart = task.kh_start  ? new Date(task.kh_start)  : null
   const khEnd   = task.kh_finish ? new Date(task.kh_finish) : null
