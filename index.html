@@ -2296,8 +2296,8 @@ function renderGanttOverview(el) {
   const today      = new Date(); today.setHours(0,0,0,0)
   const nowPct     = dateToPct(today, rangeStart, rangeDays)
 
-  // Chỉ show summary tasks + level 1-3
-  const tasks = STATE.tasks.filter(t => t.is_summary && t.outline_level <= 3)
+  // Hiện tất cả tasks (summary + leaf), mặc định collapse level > 3
+  const tasks = STATE.tasks
 
   // Build quarter labels
   const quarters = []
@@ -2312,11 +2312,26 @@ function renderGanttOverview(el) {
 
   const NAME_W = 220, PCT_W = 55, DELAY_W = 65
 
+  // Track collapsed state (level > 3 hidden by default)
+  if (!window._ganttCollapsed) window._ganttCollapsed = true
+
   let html = `
-  <div style="font-size:11px;color:var(--gray4);margin-bottom:6px">
-    Timeline: ${fmtDate(proj.start_date)} → ${fmtDate(proj.finish_date)} · ${rangeDays} ngày · Hiển thị ${tasks.length} hạng mục
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:11px;color:var(--gray4)">
+      Timeline: ${fmtDate(proj.start_date)} → ${fmtDate(proj.finish_date)} · ${rangeDays} ngày · ${tasks.length} công tác
+    </div>
+    <div style="display:flex;gap:6px">
+      <button onclick="window._ganttCollapsed=true;renderGantt()"
+        style="padding:4px 10px;font-size:11px;border:0.5px solid var(--gray2);border-radius:var(--radius);background:${window._ganttCollapsed?'var(--navy)':'white'};color:${window._ganttCollapsed?'white':'var(--gray6)'};cursor:pointer">
+        Thu gọn (3 cấp)
+      </button>
+      <button onclick="window._ganttCollapsed=false;renderGantt()"
+        style="padding:4px 10px;font-size:11px;border:0.5px solid var(--gray2);border-radius:var(--radius);background:${!window._ganttCollapsed?'var(--navy)':'white'};color:${!window._ganttCollapsed?'white':'var(--gray6)'};cursor:pointer">
+        Mở rộng (toàn bộ)
+      </button>
+    </div>
   </div>
-  <div class="gv-wrap">
+  <div class="gv-wrap" style="max-height:${window._ganttCollapsed?'auto':'75vh'};overflow-y:${window._ganttCollapsed?'visible':'auto'};position:relative">
     <div class="gv-head">
       <div class="gv-col-name" style="width:${NAME_W}px">Hạng mục</div>
       <div class="gv-col-small" style="width:${PCT_W}px">% HT</div>
@@ -2330,6 +2345,9 @@ function renderGanttOverview(el) {
     </div>`
 
   tasks.forEach(t => {
+    // Ẩn task level > 3 khi đang collapse
+    if (window._ganttCollapsed && t.outline_level > 3) return
+
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
     const {barClass} = getGanttStatus(t)
     const delay = calcDelayDays(t)
@@ -2345,14 +2363,16 @@ function renderGanttOverview(el) {
       : (t.tt_start ? dateToPct(today, rangeStart, rangeDays) : null)
     const ttW = ttR !== null ? ttR - ttL : 0
 
-    const indent = (t.outline_level-1)*14
+    const indent = (t.outline_level-1)*12
+    const isSummary = t.is_summary
     const pctBg = pct===100?'#DCFCE7':barClass==='late'?'#FEE2E2':pct===0?'var(--gray1)':'#DBEAFE'
     const pctColor = pct===100?'#166534':barClass==='late'?'#991B1B':pct===0?'var(--gray4)':'#1E40AF'
+    const rowBg = isSummary ? '' : 'background:white'
 
     html += `
-    <div class="gv-row sum" style="min-height:28px">
-      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${8+indent}px;font-weight:${t.outline_level<=2?600:500};font-size:${t.outline_level<=1?13:12}px" title="${t.name}">
-        ${t.name}
+    <div class="gv-row ${isSummary?'sum':''}" style="min-height:${isSummary?28:24}px;${rowBg}">
+      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${6+indent}px;font-weight:${t.outline_level<=2?600:t.outline_level<=3?500:400};font-size:${t.outline_level<=1?13:t.outline_level<=3?12:11}px" title="${t.name}">
+        ${isSummary?'▸ ':''}${t.name}
       </div>
       <div class="gv-cell-small" style="width:${PCT_W}px">
         <span style="font-size:11px;font-weight:600;padding:2px 5px;border-radius:6px;background:${pctBg};color:${pctColor}">${pct}%</span>
@@ -2399,12 +2419,21 @@ function renderGanttMonth(el) {
     return {label:`${months[m]}/${y}`, leftPct, widthPct}
   })
 
-  const tasks = STATE.tasks.filter(t => !t.is_summary || t.outline_level <= 4)
-    .filter(t => {
-      if (!t.kh_start || !t.kh_finish) return false
-      const s = new Date(t.kh_start), e = new Date(t.kh_finish)
-      return s <= winEnd && e >= winStart
-    }).slice(0, 40)
+  const tasks = STATE.tasks.filter(t => {
+    if (!t.kh_start || !t.kh_finish) return false
+    const s = new Date(t.kh_start), e = new Date(t.kh_finish)
+    const inWindow = s <= winEnd && e >= winStart
+    // Thêm task trễ: đã bắt đầu, chưa xong, KH kết thúc trước winStart
+    const isOverdue = t.tt_start && (t.pct_complete||0) < 100 && e < winStart
+    return inWindow || isOverdue
+  }).sort((a,b) => {
+    // Task trễ lên đầu, sau đó sort theo KH start
+    const aOver = a.tt_start && (a.pct_complete||0)<100 && new Date(a.kh_finish)<winStart
+    const bOver = b.tt_start && (b.pct_complete||0)<100 && new Date(b.kh_finish)<winStart
+    if (aOver && !bOver) return -1
+    if (!aOver && bOver) return 1
+    return new Date(a.kh_start) - new Date(b.kh_start)
+  }).slice(0, 45)
 
   const NAME_W = 210, PCT_W = 50, DELAY_W = 60
 
@@ -2454,8 +2483,9 @@ function renderGanttMonth(el) {
 
     html += `
     <div class="gv-row ${t.is_summary?'sum':''}" style="min-height:28px" onclick="${!t.is_summary?`openUpdateModal('${t.id}')`:''}" style="${!t.is_summary?'cursor:pointer':''}">
-      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${8+indent}px;font-weight:${t.is_summary?600:400};font-size:12px" title="${t.name}">
-        ${t.name}
+      <div class="gv-cell-name" style="width:${NAME_W}px;padding-left:${8+indent}px;font-weight:${t.is_summary?600:400};font-size:12px;display:flex;align-items:center;gap:5px" title="${t.name}">
+        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.name}</span>
+        ${(t.tt_start && (t.pct_complete||0)<100 && t.kh_finish && new Date(t.kh_finish)<winStart) ? '<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FEE2E2;color:#991B1B;flex-shrink:0;font-weight:600">TRỄ</span>' : ''}
       </div>
       <div class="gv-cell-small" style="width:${PCT_W}px">
         <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:6px;background:${pctBg};color:${pctFg}">${pct}%</span>
@@ -2503,9 +2533,19 @@ ${wStart.getDate()}/${wStart.getMonth()+1}`,
 
   const tasks = STATE.tasks.filter(t => {
     if (!t.kh_start || !t.kh_finish) return false
+    if (t.is_summary) return false
     const s = new Date(t.kh_start), e = new Date(t.kh_finish)
-    return s <= winEnd && e >= winStart && !t.is_summary
-  }).slice(0, 35)
+    const inWindow = s <= winEnd && e >= winStart
+    // Task trễ: đã bắt đầu, chưa xong, KH kết thúc trước cửa sổ hiện tại
+    const isOverdue = t.tt_start && (t.pct_complete||0) < 100 && e < winStart
+    return inWindow || isOverdue
+  }).sort((a,b) => {
+    const aOver = a.tt_start && (a.pct_complete||0)<100 && new Date(a.kh_finish)<winStart
+    const bOver = b.tt_start && (b.pct_complete||0)<100 && new Date(b.kh_finish)<winStart
+    if (aOver && !bOver) return -1
+    if (!aOver && bOver) return 1
+    return new Date(a.kh_start) - new Date(b.kh_start)
+  }).slice(0, 40)
 
   const NAME_W = 200, PCT_W = 50, DELAY_W = 65
   const winLabel = `Tuần ${getISOWeek(winStart)}–${getISOWeek(winEnd)} / ${winStart.getFullYear()}`
@@ -2554,8 +2594,9 @@ ${wStart.getDate()}/${wStart.getMonth()+1}`,
 
     html += `
     <div class="gv-row" style="min-height:30px;cursor:pointer" onclick="openUpdateModal('${t.id}')">
-      <div class="gv-cell-name" style="width:${NAME_W}px;font-size:12px" title="${t.name}">
-        ${t.name}
+      <div class="gv-cell-name" style="width:${NAME_W}px;font-size:12px;display:flex;align-items:center;gap:5px" title="${t.name}">
+        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.name}</span>
+        ${(t.tt_start && (t.pct_complete||0)<100 && t.kh_finish && new Date(t.kh_finish)<winStart) ? '<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FEE2E2;color:#991B1B;flex-shrink:0;font-weight:600">TRỄ</span>' : ''}
       </div>
       <div class="gv-cell-small" style="width:${PCT_W}px">
         <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:6px;background:${pctBg};color:${pctFg}">${pct}%</span>
