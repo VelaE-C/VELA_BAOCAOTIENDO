@@ -2425,31 +2425,56 @@ function calcProgressDetail(task) {
   if (!khStart || !khEnd || khDays <= 0)
     return { delayDays:null, label:'—', done:false, hasUnit:false }
 
-  // ── 3. Đang thi công: dùng KH timeline làm gốc tính elapsed ───────────
-  // elapsedDays = số ngày đã qua kể từ ngày KH bắt đầu (không phải TT bắt đầu)
-  // Lý do: velocity được tính trên KH timeline, phải so trên cùng gốc thời gian
+  // ── 3. Đang thi công ────────────────────────────────────────────────────
+  // Nếu tt_start < kh_start → bắt đầu sớm hơn KH
+  const ttStartDate  = task.tt_start ? new Date(task.tt_start) : null
+  const earlyStartDays = (ttStartDate && ttStartDate < khStart)
+    ? Math.round((khStart - ttStartDate) / 86400000) : 0
+
+  // elapsedDays tính từ KH start (gốc velocity), nhưng nếu bắt đầu sớm
+  // thì kỳ vọng thực tế phải trừ đi số ngày sớm → kỳ vọng thấp hơn
   const elapsedDays = Math.round((today - khStart) / 86400000)
 
-  if (elapsedDays <= 0)
-    return { delayDays:0, label:'✓ Đúng KH', done:false, hasUnit:false }
+  // Nếu chưa đến ngày KH bắt đầu nhưng đã bắt đầu sớm
+  if (elapsedDays <= 0 && earlyStartDays > 0) {
+    // Đã bắt đầu trước KH, tính sớm theo số ngày đã làm trước KH
+    const earlyElapsed = Math.round((today - ttStartDate) / 86400000)
+    if (hasUnit && planQty > 0) {
+      const velocity = planQty / khDays
+      const earlyExpected = Math.round(velocity * earlyElapsed)
+      const aheadQty  = Math.max(0, actQty - earlyExpected)
+      const aheadDays = earlyStartDays + (aheadQty > 0 ? Math.round(aheadQty/velocity) : 0)
+      return { delayDays: -aheadDays, aheadDays, aheadQty, unit: task.unit,
+               label: `Sớm ${aheadDays} ngày${aheadQty>0?' · dư '+aheadQty+' '+task.unit:''}`,
+               done:false, hasUnit:true }
+    }
+    return { delayDays: -earlyStartDays, aheadDays: earlyStartDays,
+             label: `Bắt đầu sớm ${earlyStartDays} ngày`, done:false, hasUnit:false }
+  }
+
+  if (elapsedDays <= 0 && earlyStartDays === 0)
+    return { delayDays:0, label:'Đúng KH', done:false, hasUnit:false }
 
   if (hasUnit && planQty > 0) {
     // ── Tam suất theo đơn vị (căn, m², m³...) ──────────────────────────
-    const velocity    = planQty / khDays           // KH: X đơn vị / ngày
-    const expectedQty = Math.round(velocity * Math.min(elapsedDays, khDays))
+    const velocity    = planQty / khDays
+    // Nếu bắt đầu sớm: tại thời điểm KH bắt đầu, task đã có earlyStartDays*velocity done
+    const earlyBonus  = Math.round(velocity * earlyStartDays)
+    const expectedQty = Math.max(0, Math.round(velocity * Math.min(elapsedDays, khDays)) - earlyBonus)
     const missingQty  = Math.max(0, expectedQty - actQty)
     const delayDays   = missingQty > 0 ? Math.round(missingQty / velocity) : 0
 
-    // Tính thêm: nếu đã qua KH end mà chưa xong
     let overrunDays = 0
     if (khEnd && today > khEnd && pct < 100) {
       overrunDays = Math.round((today - khEnd) / 86400000)
     }
-    const totalDelay = Math.max(delayDays, overrunDays)
+    const totalDelay = Math.max(delayDays, overrunDays) - earlyStartDays
 
-    // Tính buffer (dư so với KH)
+    // Tính buffer: dư so với kỳ vọng + bonus từ bắt đầu sớm
     const aheadQty  = Math.max(0, actQty - expectedQty)
-    const aheadDays = aheadQty > 0 ? Math.round(aheadQty / velocity) : 0
+    const aheadDays = aheadQty > 0
+      ? Math.round(aheadQty / velocity) + earlyStartDays
+      : earlyStartDays > 0 && missingQty === 0 ? earlyStartDays : 0
 
     return {
       delayDays:  totalDelay > 0 ? totalDelay : -aheadDays,
@@ -2466,21 +2491,23 @@ function calcProgressDetail(task) {
     }
   } else {
     // ── Tam suất theo % ────────────────────────────────────────────────
-    const velocityPct = 100 / khDays
-    const expectedPct = Math.min(100, Math.round(velocityPct * Math.min(elapsedDays, khDays)))
-    const missingPct  = Math.max(0, expectedPct - pct)
-    const delayDays   = missingPct > 0 ? Math.round(missingPct / velocityPct) : 0
+    const velocityPct  = 100 / khDays
+    const earlyBonusPct = velocityPct * earlyStartDays
+    const expectedPct  = Math.max(0, Math.min(100, Math.round(velocityPct * Math.min(elapsedDays, khDays))) - Math.round(earlyBonusPct))
+    const missingPct   = Math.max(0, expectedPct - pct)
+    const delayDays    = missingPct > 0 ? Math.round(missingPct / velocityPct) : 0
 
-    // Nếu đã qua KH end mà chưa xong
     let overrunDays = 0
     if (khEnd && today > khEnd && pct < 100) {
       overrunDays = Math.round((today - khEnd) / 86400000)
     }
-    const totalDelay = Math.max(delayDays, overrunDays)
+    const totalDelay = Math.max(delayDays, overrunDays) - earlyStartDays
 
-    // Tính buffer %
+    // Buffer % + bonus từ bắt đầu sớm
     const aheadPct  = Math.max(0, pct - expectedPct)
-    const aheadDays = aheadPct > 0 ? Math.round(aheadPct / velocityPct) : 0
+    const aheadDays = aheadPct > 0
+      ? Math.round(aheadPct / velocityPct) + earlyStartDays
+      : earlyStartDays > 0 && missingPct === 0 ? earlyStartDays : 0
 
     return {
       delayDays:  totalDelay > 0 ? totalDelay : -aheadDays,
