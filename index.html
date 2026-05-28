@@ -2206,7 +2206,7 @@ function gantt() {
     </button>
   </div>
 
-  <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px" id="gantt-collapse-btns" style="display:none">
+  <div id="gantt-collapse-btns" style="display:none;justify-content:flex-end;gap:6px;margin-bottom:8px">
     <button id="btn-collapse-gantt"
       onclick="window._ganttCollapsed=true;document.getElementById('btn-collapse-gantt').style.background='var(--navy)';document.getElementById('btn-collapse-gantt').style.color='white';document.getElementById('btn-expand-gantt').style.background='white';document.getElementById('btn-expand-gantt').style.color='var(--gray6)';renderGantt()"
       style="padding:6px 14px;font-size:12px;font-weight:500;border:1px solid var(--gray2);border-radius:var(--radius);background:var(--navy);color:white;cursor:pointer">
@@ -2236,8 +2236,13 @@ function initGantt() {
   // Show collapse buttons for overview (default view)
   setTimeout(() => {
     const btnRow = document.getElementById('gantt-collapse-btns')
-    if (btnRow) btnRow.style.display = 'flex'
-  }, 50)
+    if (btnRow) {
+      btnRow.style.display = 'flex'
+      btnRow.style.justifyContent = 'flex-end'
+      btnRow.style.gap = '6px'
+      btnRow.style.marginBottom = '8px'
+    }
+  }, 100)
   renderGantt()
 }
 
