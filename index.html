@@ -633,7 +633,7 @@ async function initApp(user) {
   const { data: roleData, error: roleErr } = await sb.from('user_roles')
     .select('role, project_id').eq('user_id', user.id).maybeSingle()
   if (roleErr) console.warn('user_roles query:', roleErr.message)
-  STATE.role = roleData?.role || 'admin'  // default admin for now
+  STATE.role = roleData?.role || 'updater'  // default = ít quyền nhất nếu chưa gán role
 
   // Load projects
   const { data: projs } = await sb.from('projects').select('*').order('code')
