@@ -2274,70 +2274,122 @@ function renderGantt() {
 
 // ── HELPER: tính delay ────────────────────────────────────────────────────
 function getGanttStatus(task) {
-  const today = new Date(); today.setHours(0,0,0,0)
-  const khEnd = task.kh_finish ? new Date(task.kh_finish) : null
-  const pct = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
+  const today   = new Date(); today.setHours(0,0,0,0)
+  const khStart = task.kh_start  ? new Date(task.kh_start)  : null
+  const khEnd   = task.kh_finish ? new Date(task.kh_finish) : null
+  const pct     = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
+  const hasUnit = task.unit && task.unit !== '%' && task.planned_quantity > 0
+
   if (pct === 100) return {status:'done', barClass:'ok'}
+
   if (!task.tt_start) {
-    if (khEnd && today > khEnd) return {status:'not_started_late', barClass:'late'}
+    if (khStart && today > khStart) return {status:'not_started_late', barClass:'late'}
     return {status:'not_started', barClass:'ok'}
   }
+
   if (khEnd && today > khEnd && pct < 100) return {status:'late', barClass:'late'}
-  const khDays = task.kh_finish && task.kh_start ? Math.round((new Date(task.kh_finish)-new Date(task.kh_start))/86400000) : 1
-  const elapsed = Math.round((today - new Date(task.kh_start))/86400000)
-  const expectedPct = Math.min(100, Math.round(elapsed/khDays*100))
-  if (pct < expectedPct - 10) return {status:'late', barClass:'late'}
+
+  if (!khStart || !khEnd) return {status:'ok', barClass:'ok'}
+
+  const khDays      = Math.round((khEnd - khStart) / 86400000)
+  const elapsedDays = Math.round((today - khStart) / 86400000)  // dùng KH start làm gốc
+  if (khDays <= 0 || elapsedDays <= 0) return {status:'ok', barClass:'ok'}
+
+  if (hasUnit && task.planned_quantity > 0) {
+    const velocity    = task.planned_quantity / khDays
+    const expectedQty = Math.round(velocity * Math.min(elapsedDays, khDays))
+    const actQty      = task.actual_quantity || 0
+    if (actQty < expectedQty * 0.9) return {status:'late', barClass:'late'}
+  } else {
+    const expectedPct = Math.min(100, Math.round(elapsedDays / khDays * 100))
+    if (pct < expectedPct - 10) return {status:'late', barClass:'late'}
+  }
+
   return {status:'ok', barClass:'ok'}
 }
 
 // ── Tam suất: tính lệch theo velocity ────────────────────────────────────
 function calcProgressDetail(task) {
-  const today = new Date(); today.setHours(0,0,0,0)
-  const khStart  = task.kh_start  ? new Date(task.kh_start)  : null
-  const khEnd    = task.kh_finish ? new Date(task.kh_finish) : null
-  const ttStart  = task.tt_start  ? new Date(task.tt_start)  : null
-  const ttFinish = task.tt_finish ? new Date(task.tt_finish) : null
-  const pct      = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
-  const hasUnit  = task.unit && task.unit !== '%' && task.planned_quantity > 0
-  const planQty  = task.planned_quantity || 0
-  const actQty   = task.actual_quantity  || 0
-  const khDays   = (khStart && khEnd) ? Math.round((khEnd-khStart)/86400000) : 0
+  const today   = new Date(); today.setHours(0,0,0,0)
+  const khStart = task.kh_start  ? new Date(task.kh_start)  : null
+  const khEnd   = task.kh_finish ? new Date(task.kh_finish) : null
+  const ttFinish= task.tt_finish ? new Date(task.tt_finish) : null
+  const pct     = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
+  const hasUnit = task.unit && task.unit !== '%' && task.planned_quantity > 0
+  const planQty = task.planned_quantity || 0
+  const actQty  = task.actual_quantity  || 0
+  const khDays  = (khStart && khEnd) ? Math.round((khEnd - khStart) / 86400000) : 0
 
-  // Đã hoàn thành
+  // ── 1. Đã hoàn thành: so ngày TT xong vs KH xong ──────────────────────
   if (pct === 100 && ttFinish && khEnd) {
-    const d = Math.round((ttFinish - khEnd)/86400000)
-    return { delayDays:d, label: d>0?`+${d}d`:d<0?`${d}d`:'0d', done:true, hasUnit:false }
+    const d = Math.round((ttFinish - khEnd) / 86400000)
+    return { delayDays:d, label: d>0?`+${d}d trễ`:d<0?`${Math.abs(d)}d vượt`:'Đúng KH', done:true, hasUnit:false }
   }
 
-  if (!ttStart || !khStart || !khEnd || khDays <= 0)
+  // ── 2. Chưa bắt đầu ────────────────────────────────────────────────────
+  if (!task.tt_start) {
+    // Nếu đã qua ngày KH bắt đầu mà chưa làm → tính số ngày trễ bắt đầu
+    if (khStart && today > khStart) {
+      const startDelay = Math.round((today - khStart) / 86400000)
+      return { delayDays: startDelay, label: `+${startDelay}d chưa BĐ`, done:false, hasUnit:false }
+    }
+    return { delayDays:null, label:'—', done:false, hasUnit:false }
+  }
+
+  if (!khStart || !khEnd || khDays <= 0)
     return { delayDays:null, label:'—', done:false, hasUnit:false }
 
-  const elapsedDays = Math.round((today - ttStart)/86400000)
-  if (elapsedDays <= 0) return { delayDays:0, label:'Đúng KH', done:false, hasUnit:false }
+  // ── 3. Đang thi công: dùng KH timeline làm gốc tính elapsed ───────────
+  // elapsedDays = số ngày đã qua kể từ ngày KH bắt đầu (không phải TT bắt đầu)
+  // Lý do: velocity được tính trên KH timeline, phải so trên cùng gốc thời gian
+  const elapsedDays = Math.round((today - khStart) / 86400000)
+
+  if (elapsedDays <= 0)
+    return { delayDays:0, label:'✓ Đúng KH', done:false, hasUnit:false }
 
   if (hasUnit && planQty > 0) {
-    // Tam suất theo đơn vị
-    const velocity    = planQty / khDays
-    const expectedQty = Math.round(velocity * elapsedDays)
+    // ── Tam suất theo đơn vị (căn, m², m³...) ──────────────────────────
+    const velocity    = planQty / khDays           // KH: X đơn vị / ngày
+    const expectedQty = Math.round(velocity * Math.min(elapsedDays, khDays))
     const missingQty  = Math.max(0, expectedQty - actQty)
     const delayDays   = missingQty > 0 ? Math.round(missingQty / velocity) : 0
+
+    // Tính thêm: nếu đã qua KH end mà chưa xong
+    let overrunDays = 0
+    if (khEnd && today > khEnd && pct < 100) {
+      overrunDays = Math.round((today - khEnd) / 86400000)
+    }
+    const totalDelay = Math.max(delayDays, overrunDays)
+
     return {
-      delayDays,
+      delayDays: totalDelay,
       missingQty,
       unit: task.unit,
-      label: delayDays > 0 ? `+${delayDays}d · -${missingQty}${task.unit}` : '✓ Đúng KH',
+      label: totalDelay > 0
+        ? `🔴 +${totalDelay}d · -${missingQty} ${task.unit}`
+        : `✓ Đúng KH`,
       done: false, hasUnit: true
     }
   } else {
-    // Tam suất theo %
+    // ── Tam suất theo % ────────────────────────────────────────────────
     const velocityPct = 100 / khDays
-    const expectedPct = Math.min(100, Math.round(velocityPct * elapsedDays))
+    const expectedPct = Math.min(100, Math.round(velocityPct * Math.min(elapsedDays, khDays)))
     const missingPct  = Math.max(0, expectedPct - pct)
     const delayDays   = missingPct > 0 ? Math.round(missingPct / velocityPct) : 0
+
+    // Nếu đã qua KH end mà chưa xong
+    let overrunDays = 0
+    if (khEnd && today > khEnd && pct < 100) {
+      overrunDays = Math.round((today - khEnd) / 86400000)
+    }
+    const totalDelay = Math.max(delayDays, overrunDays)
+
     return {
-      delayDays,
+      delayDays: totalDelay,
       missingPct,
-      label: delayDays > 0 ? `+${delayDays}d · -${missingPct}%` : '✓ Đúng KH',
+      label: totalDelay > 0
+        ? `🔴 +${totalDelay}d · -${missingPct}%`
+        : `✓ Đúng KH`,
       done: false, hasUnit: false
     }
   }
