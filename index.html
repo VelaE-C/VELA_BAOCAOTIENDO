@@ -756,12 +756,16 @@ function navigate(page) {
 // ═══════════════════════════════════════════════════════════
 function dashboard() {
   return `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
     <div>
       <h2 style="font-size:18px;font-weight:700;color:var(--gray8)">Dashboard Tổng quan</h2>
       <p style="font-size:13px;color:var(--gray4)">Cập nhật: ${new Date().toLocaleDateString('vi-VN')}</p>
     </div>
-    <button class="btn btn-secondary btn-sm" onclick="exportWeeklyReport()">📄 Xuất báo cáo tuần</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-secondary btn-sm" onclick="showAISummaryHistory()">📋 Lịch sử AI</button>
+      <button class="btn btn-primary btn-sm" onclick="generateAISummary()">🤖 AI Tóm tắt tiến độ</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportWeeklyReport()">📄 Xuất báo cáo tuần</button>
+    </div>
   </div>
   <div class="metrics-row" id="dash-metrics"></div>
   <div class="card">
@@ -845,8 +849,13 @@ async function loadDashboard() {
                 <span style="font-size:12px;color:var(--gray5)">${pct}%</span>
               </div>
             </td>
-            <td>${statusBadge(t.status)}</td>
-            <td style="${dStyle}">${delay != null ? (delay>0?'+'+delay:delay)+'d' : '—'}</td>
+            <td style="font-size:11px">${
+              t._delay > 7 ? '<span style="color:#991B1B;font-weight:500">Trễ '+t._delay+'d</span>'
+              : t._delay > 0 ? '<span style="color:#D97706;font-weight:500">Chú ý +'+t._delay+'d</span>'
+              : t._delay < 0 ? '<span style="color:#166534;font-weight:500">Sớm '+Math.abs(t._delay)+'d</span>'
+              : '<span style="color:#64748B">Đúng KH</span>'
+            }</td>
+            <td style="${dStyle}">${t._delay != null ? (t._delay>0?'+'+t._delay:t._delay)+'d' : '—'}</td>
           </tr>`
         }).join('')}
       </tbody>
@@ -1041,13 +1050,21 @@ function initWbs() {
       </div>
       <div class="wbs-status" style="font-size:11px;text-align:center;padding:0 4px">
         ${(() => {
-          if (t.is_summary) return statusBadge(rowStatus)
+          // Task cha (summary): chỉ hiện % — không hiện badge trạng thái
+          if (t.is_summary) {
+            return ''
+          }
+          // Task lá: hiện đầy đủ
           const d = calcProgressDetail(t)
-          if (d.done) return '<span class="badge badge-green" style="font-size:10px">✅ Hoàn thành</span>'
+          if (d.done) return '<span class="badge badge-green" style="font-size:10px">✅ Xong</span>'
           if (d.delayDays === null || d.delayDays === undefined) return statusBadge(rowStatus)
+          if (d.delayDays <= 0 && (d.aheadDays||0) > 0) {
+            const aQty = d.hasUnit ? ' · dư '+(d.aheadQty||0)+' '+(d.unit||'') : ''
+            return '<span class="badge badge-green" style="font-size:10px;white-space:normal;line-height:1.4">Sớm '+(d.aheadDays)+'ngày'+aQty+'</span>'
+          }
           if (d.delayDays <= 0) return '<span class="badge badge-green" style="font-size:10px">🟢 Đúng KH</span>'
-          const qty = d.hasUnit ? (d.missingQty||0) + ' ' + (d.unit||'') : (d.missingPct||0) + '%'
-          return '<span class="badge badge-red" style="white-space:normal;line-height:1.4;font-size:10px">Trễ ' + d.delayDays + 'ngày<br>thiếu ' + qty + '</span>'
+          const qty = d.hasUnit ? (d.missingQty||0)+' '+(d.unit||'') : (d.missingPct||0)+'%'
+          return '<span class="badge badge-red" style="white-space:normal;line-height:1.4;font-size:10px">Trễ '+d.delayDays+'n<br>-'+qty+'</span>'
         })()}
       </div>
     </div>`
@@ -3837,6 +3854,256 @@ async function exportPDF() {
 }
 
 
+
+// ═══════════════════════════════════════════════════════════
+// AI SUMMARY — Claude API
+// ═══════════════════════════════════════════════════════════
+async function generateAISummary() {
+  const proj = STATE.currentProject
+  if (!proj) { toast('Chưa có dự án', 'error'); return }
+
+  loading(true, '🤖 AI đang phân tích tiến độ...')
+
+  try {
+    const tasks = STATE.tasks
+    const leaf = tasks.filter(t => !t.is_summary)
+    const today = new Date().toLocaleDateString('vi-VN')
+    const week = getISOWeek(new Date())
+
+    // Build data summary for prompt
+    const late = leaf.filter(t => t._delay > 0).sort((a,b) => (b._delay||0)-(a._delay||0))
+    const ahead = leaf.filter(t => t._delay < 0)
+    const done = leaf.filter(t => (t.pct_complete||0) === 100)
+    const notStarted = leaf.filter(t => !t.tt_start && t.kh_start && new Date(t.kh_start) < new Date())
+
+    // Top 5 worst delays
+    const worstTasks = late.slice(0,5).map(t =>
+      `- ${t.name}: trễ ${t._delay} ngày, hiện ${t.pct_complete||0}%${t._delayLabel ? ' ('+t._delayLabel+')' : ''}`
+    ).join('
+')
+
+    // Summary stats
+    const totalPct = leaf.length > 0 ? Math.round(leaf.reduce((s,t)=>s+(t.display_pct||t.pct_complete||0),0)/leaf.length) : 0
+    const lateCount = late.length
+    const avgDelay = late.length > 0 ? Math.round(late.reduce((s,t)=>s+(t._delay||0),0)/late.length) : 0
+
+    // Level 2 summary
+    const lvl2 = tasks.filter(t => t.is_summary && t.outline_level === 2)
+    const lvl2Summary = lvl2.map(t =>
+      `- ${t.name}: ${t.display_pct||t.pct_complete||0}% (${t._delayLabel||'Đúng KH'})`
+    ).join('
+')
+
+    const prompt = `Bạn là chuyên gia quản lý dự án xây dựng. Phân tích tiến độ dự án sau và tóm tắt ngắn gọn bằng tiếng Việt.
+
+DỰ ÁN: ${proj.name} (${proj.code})
+NGÀY BÁO CÁO: ${today} - Tuần ${week}
+THỜI GIAN: ${proj.start_date} → ${proj.finish_date}
+
+TỔNG QUAN:
+- Tổng công tác: ${leaf.length} | Hoàn thành: ${done.length} | Đang làm: ${leaf.length-done.length-notStarted.length}
+- Chậm tiến độ: ${lateCount} công tác | Trễ trung bình: ${avgDelay} ngày
+- Chưa bắt đầu dù đã đến hạn: ${notStarted.length} công tác
+- % hoàn thành tổng thể ước tính: ${totalPct}%
+
+TIẾN ĐỘ CÁC HẠNG MỤC CHÍNH:
+${lvl2Summary}
+
+TOP ${Math.min(5,late.length)} CÔNG TÁC CHẬM NHẤT:
+${worstTasks || 'Không có'}
+
+Hãy viết báo cáo TÓM TẮT gồm 4 phần, mỗi phần 2-4 câu ngắn gọn, súc tích:
+1. **TỔNG QUAN TIẾN ĐỘ** - Đánh giá chung tình hình hiện tại
+2. **ĐIỂM CHÚ Ý** - Top 3 rủi ro/vấn đề cần xử lý ngay
+3. **XU HƯỚNG TUẦN TỚI** - Dự báo và cảnh báo
+4. **KHUYẾN NGHỊ** - 2-3 hành động cụ thể ưu tiên cao
+
+Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Không dùng bullet points lồng nhau.`
+
+    // Call Claude API (use stored key or built-in)
+    const storedKey = localStorage.getItem('claude_api_key') || ''
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(storedKey ? { 'x-api-key': storedKey, 'anthropic-version': '2023-06-01' } : {})
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error?.message || 'API error ' + res.status)
+    }
+
+    const data = await res.json()
+    const summary = data.content?.[0]?.text || 'Không có kết quả'
+
+    // Save to Supabase
+    const saveResult = await sb.from('ai_summaries').insert({
+      project_id:   proj.id,
+      project_name: proj.name,
+      summary_text: summary,
+      stats: JSON.stringify({
+        total: leaf.length, done: done.length, late: lateCount,
+        avg_delay: avgDelay, total_pct: totalPct, week
+      }),
+      created_by: STATE.user.email,
+      week_number: week,
+      year: new Date().getFullYear()
+    })
+
+    loading(false)
+    showAISummaryModal(summary, today, week, proj.name)
+
+  } catch(e) {
+    loading(false)
+    if (e.message.includes('api_key') || e.message.includes('401') || e.message.includes('403')) {
+      toast('Claude API chưa được cấu hình. Xem hướng dẫn.', 'error')
+      showAPISetupGuide()
+    } else if (e.message.includes('ai_summaries')) {
+      // Table doesn't exist yet — show result anyway
+      const data2 = e  // won't reach here in normal flow
+      toast('Lưu lịch sử thất bại (chưa tạo bảng), nhưng tóm tắt đã được tạo', '')
+    } else {
+      toast('Lỗi: ' + e.message, 'error')
+    }
+  }
+}
+
+function showAISummaryModal(text, date, week, projName) {
+  // Format markdown-like text
+  const formatted = text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/
+
+/g, '</p><p style="margin-top:10px">')
+    .replace(/
+/g, '<br>')
+
+  openModal(`🤖 AI Tóm tắt tiến độ — Tuần ${week}`, `
+    <div style="padding:10px 14px;background:var(--lblue);border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:var(--gray6)">
+      <strong>${projName}</strong> · Ngày ${date} · Tuần ${week}
+    </div>
+    <div style="font-size:13px;line-height:1.8;color:var(--gray7)">
+      <p>${formatted}</p>
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Đóng</button>
+    <button class="btn btn-primary" onclick="closeModal();exportWeeklyReport()">📄 Xuất báo cáo</button>
+  `)
+}
+
+async function showAISummaryHistory() {
+  const proj = STATE.currentProject
+  if (!proj) return
+
+  loading(true, 'Đang tải lịch sử...')
+  const { data: history, error } = await sb.from('ai_summaries')
+    .select('*')
+    .eq('project_id', proj.id)
+    .order('created_at', { ascending: false })
+    .limit(10)
+  loading(false)
+
+  if (error) {
+    if (error.message.includes('does not exist')) {
+      openModal('📋 Lịch sử AI Tóm tắt', `
+        <div style="text-align:center;padding:30px;color:var(--gray4)">
+          <div style="font-size:32px;margin-bottom:12px">🗄️</div>
+          <div style="font-size:14px;font-weight:500;margin-bottom:8px">Chưa có bảng lưu lịch sử</div>
+          <div style="font-size:12px">Chạy SQL bên dưới trong Supabase để tạo bảng:</div>
+          <div style="background:var(--gray1);border-radius:var(--radius);padding:10px;margin-top:10px;font-family:monospace;font-size:11px;text-align:left">
+            CREATE TABLE ai_summaries (<br>
+            &nbsp;&nbsp;id uuid DEFAULT gen_random_uuid() PRIMARY KEY,<br>
+            &nbsp;&nbsp;project_id uuid REFERENCES projects(id),<br>
+            &nbsp;&nbsp;project_name text,<br>
+            &nbsp;&nbsp;summary_text text,<br>
+            &nbsp;&nbsp;stats jsonb,<br>
+            &nbsp;&nbsp;created_by text,<br>
+            &nbsp;&nbsp;week_number int,<br>
+            &nbsp;&nbsp;year int,<br>
+            &nbsp;&nbsp;created_at timestamptz DEFAULT now()<br>
+            );<br>
+            ALTER TABLE ai_summaries ENABLE ROW LEVEL SECURITY;<br>
+            CREATE POLICY "auth all" ON ai_summaries FOR ALL USING (auth.role()='authenticated') WITH CHECK (auth.role()='authenticated');
+          </div>
+        </div>
+      `, `<button class="btn btn-secondary" onclick="closeModal()">Đóng</button>`)
+      return
+    }
+    toast('Lỗi: ' + error.message, 'error')
+    return
+  }
+
+  if (!history?.length) {
+    openModal('📋 Lịch sử AI Tóm tắt', `
+      <div style="text-align:center;padding:30px;color:var(--gray4)">
+        Chưa có lần tóm tắt nào. Bấm <strong>🤖 AI Tóm tắt tiến độ</strong> để tạo lần đầu.
+      </div>
+    `, `<button class="btn btn-secondary" onclick="closeModal()">Đóng</button>`)
+    return
+  }
+
+  const rows = history.map(h => {
+    const stats = h.stats ? JSON.parse(h.stats) : {}
+    const date = new Date(h.created_at).toLocaleDateString('vi-VN')
+    const preview = h.summary_text?.slice(0,120) + '...'
+    return `<div style="padding:12px 14px;border-bottom:0.5px solid var(--gray2);cursor:pointer"
+               onclick="showAISummaryModal(${JSON.stringify(h.summary_text).replace(/</g,'&lt;')}, '${date}', '${h.week_number}', '${h.project_name}')"
+               onmouseover="this.style.background='var(--gray0)'" onmouseout="this.style.background=''">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:12px;font-weight:600;color:var(--gray8)">Tuần ${h.week_number}/${h.year}</span>
+        <span style="font-size:11px;color:var(--gray4)">${date} · ${h.created_by?.split('@')[0]||''}</span>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+        ${stats.total ? `<span style="font-size:10px;padding:1px 6px;background:var(--lblue);color:var(--blue);border-radius:8px">${stats.done||0}/${stats.total} xong</span>` : ''}
+        ${stats.late ? `<span style="font-size:10px;padding:1px 6px;background:#FEE2E2;color:#991B1B;border-radius:8px">${stats.late} chậm</span>` : ''}
+        ${stats.total_pct ? `<span style="font-size:10px;padding:1px 6px;background:#DCFCE7;color:#166534;border-radius:8px">${stats.total_pct}% HT</span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--gray5);line-height:1.5">${preview}</div>
+    </div>`
+  }).join('')
+
+  openModal('📋 Lịch sử AI Tóm tắt — ' + proj.name, `
+    <div style="font-size:12px;color:var(--gray4);margin-bottom:10px">${history.length} lần gần nhất · Click để xem đầy đủ</div>
+    <div style="border:0.5px solid var(--gray2);border-radius:var(--radius);overflow:hidden">${rows}</div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">Đóng</button>`)
+}
+
+function showAPISetupGuide() {
+  openModal('⚙️ Cấu hình Claude API', `
+    <div style="font-size:13px;line-height:1.8;color:var(--gray6)">
+      <p>Tính năng AI Tóm tắt cần <strong>Claude API key</strong> từ Anthropic.</p>
+      <div style="background:var(--gray1);border-radius:var(--radius);padding:12px;font-size:12px;margin:10px 0">
+        <strong>Cách lấy API key:</strong><br>
+        1. Vào <a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">console.anthropic.com</a><br>
+        2. Đăng ký / đăng nhập → API Keys → Create Key<br>
+        3. Copy key (dạng <code>sk-ant-api03-...</code>)
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label class="form-label">Dán API Key vào đây:</label>
+        <input class="form-input" type="password" id="api-key-input" placeholder="sk-ant-api03-...">
+        <div style="font-size:11px;color:var(--gray4);margin-top:4px">Key được lưu trong localStorage của trình duyệt này</div>
+      </div>
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+    <button class="btn btn-primary" onclick="saveAPIKey()">💾 Lưu & Thử lại</button>
+  `)
+}
+
+function saveAPIKey() {
+  const key = document.getElementById('api-key-input')?.value?.trim()
+  if (!key || !key.startsWith('sk-ant')) { toast('API key không hợp lệ', 'error'); return }
+  localStorage.setItem('claude_api_key', key)
+  closeModal()
+  toast('Đã lưu API key! Thử tóm tắt lại.', 'success')
+}
 
 // ═══════════════════════════════════════════════════════════
 // EVENT LISTENERS
