@@ -3978,11 +3978,8 @@ function showAISummaryModal(text, date, week, projName) {
   // Format markdown-like text
   const formatted = text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/
-
-/g, '</p><p style="margin-top:10px">')
-    .replace(/
-/g, '<br>')
+    .replace(/\n\n/g, '</p><p style="margin-top:10px">')
+    .replace(/\n/g, '<br>')
 
   openModal(`🤖 AI Tóm tắt tiến độ — Tuần ${week}`, `
     <div style="padding:10px 14px;background:var(--lblue);border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:var(--gray6)">
