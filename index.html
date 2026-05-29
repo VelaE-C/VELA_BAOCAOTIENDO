@@ -2990,6 +2990,26 @@ function calcDelayDays(task) {
   return calcProgressDetail(task).delayDays
 }
 
+// Tính timeline thực tế từ task (bỏ qua project.start/finish_date từ XML)
+function getActualTimeline(tasks) {
+  const dates = []
+  tasks.forEach(t => {
+    if (t.kh_start)  dates.push(new Date(t.kh_start))
+    if (t.kh_finish) dates.push(new Date(t.kh_finish))
+  })
+  if (!dates.length) return null
+  const minD = new Date(Math.min(...dates))
+  const maxD = new Date(Math.max(...dates))
+  // Add 5% padding on each side
+  const total = maxD - minD
+  const pad = Math.max(total * 0.02, 7 * 86400000) // min 7 days padding
+  return {
+    start: new Date(minD.getTime() - pad),
+    end:   new Date(maxD.getTime() + pad),
+    days:  Math.round((new Date(maxD.getTime() + pad) - new Date(minD.getTime() - pad)) / 86400000)
+  }
+}
+
 function dateToPct(date, rangeStart, rangeDays) {
   if (!date) return null
   const d = new Date(date); d.setHours(0,0,0,0)
@@ -3002,17 +3022,21 @@ function dateToPct(date, rangeStart, rangeDays) {
 // ══════════════════════════════════════════════════════════════════════════
 function renderGanttOverview(el) {
   const proj = STATE.currentProject
-  const rangeStart = new Date(proj.start_date)
-  const rangeEnd   = new Date(proj.finish_date)
-  const rangeDays  = Math.round((rangeEnd-rangeStart)/86400000)
+  // Dùng timeline thực tế từ task thay vì project.start/finish_date từ XML
+  const tl = getActualTimeline(STATE.tasks)
+  if (!tl) { el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray4)">Không có dữ liệu</div>'; return }
+  const rangeStart = tl.start
+  const rangeEnd   = tl.end
+  const rangeDays  = tl.days
   const today      = new Date(); today.setHours(0,0,0,0)
   const nowPct     = dateToPct(today, rangeStart, rangeDays)
 
-  // Quarter labels
+  // Quarter labels — chỉ hiện các quý trong phạm vi thực tế
   const quarters = []
   let cur = new Date(rangeStart.getFullYear(), Math.floor(rangeStart.getMonth()/3)*3, 1)
   while (cur <= rangeEnd) {
-    quarters.push({ label: `Q${Math.floor(cur.getMonth()/3)+1} ${cur.getFullYear()}`, pct: dateToPct(cur, rangeStart, rangeDays) })
+    const qPct = dateToPct(cur, rangeStart, rangeDays)
+    if (qPct >= 0 && qPct <= 100) quarters.push({ label: `Q${Math.floor(cur.getMonth()/3)+1} ${cur.getFullYear()}`, pct: qPct })
     cur = new Date(cur.getFullYear(), cur.getMonth()+3, 1)
   }
 
@@ -3147,7 +3171,9 @@ function ganttToggleRow(rowEl, wbsCode) {
 // ══════════════════════════════════════════════════════════════════════════
 function renderGanttMonth(el) {
   const proj = STATE.currentProject
-  const projStart = new Date(proj.start_date)
+  // Dùng ngày task sớm nhất làm gốc (không phải project.start_date)
+  const tl2 = getActualTimeline(STATE.tasks)
+  const projStart = tl2 ? tl2.start : new Date(proj.start_date)
   const today = new Date(); today.setHours(0,0,0,0)
 
   const winStart = new Date(projStart.getFullYear(), projStart.getMonth() + GANTT_MONTH_OFFSET, 1)
@@ -3675,9 +3701,11 @@ async function exportPDF() {
   try {
     const today = new Date().toLocaleDateString('vi-VN')
     const tasks = STATE.tasks
-    const rangeStart = new Date(proj.start_date)
-    const rangeEnd   = new Date(proj.finish_date)
-    const rangeDays  = Math.round((rangeEnd - rangeStart) / 86400000)
+    // Dùng timeline thực tế từ task
+    const tl3 = getActualTimeline(tasks)
+    const rangeStart = tl3 ? tl3.start : new Date(proj.start_date)
+    const rangeEnd   = tl3 ? tl3.end   : new Date(proj.finish_date)
+    const rangeDays  = tl3 ? tl3.days  : Math.round((rangeEnd - rangeStart) / 86400000)
     const todayD     = new Date(); todayD.setHours(0,0,0,0)
     const nowPct     = Math.max(0, Math.min(100, Math.round((todayD - rangeStart)/86400000/rangeDays*100)))
 
