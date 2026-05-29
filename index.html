@@ -3919,55 +3919,53 @@ Hãy viết báo cáo TÓM TẮT gồm 4 phần, mỗi phần 2-4 câu ngắn g�
 
 Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Không dùng bullet points lồng nhau.`
 
-    // Call Claude API (use stored key or built-in)
-    const storedKey = localStorage.getItem('claude_api_key') || ''
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // Gọi qua Supabase Edge Function (tránh CORS khi gọi trực tiếp từ browser)
+    const { data: { session } } = await sb.auth.getSession()
+    const token = session?.access_token
+    if (!token) throw new Error('Chưa đăng nhập')
+
+    const statsPayload = {
+      total: leaf.length, done: done.length, late: lateCount,
+      avg_delay: avgDelay, total_pct: totalPct, week
+    }
+
+    const res = await fetch(CFG.SUPABASE_URL + '/functions/v1/ai-summary', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(storedKey ? { 'x-api-key': storedKey, 'anthropic-version': '2023-06-01' } : {})
+        'Authorization': 'Bearer ' + token
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
+        prompt,
+        project_id:   proj.id,
+        project_name: proj.name,
+        stats:        statsPayload
       })
     })
 
     if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.error?.message || 'API error ' + res.status)
+      const err = await res.json().catch(() => ({}))
+      if (err.error?.includes('CLAUDE_API_KEY')) {
+        throw new Error('EDGE_FUNCTION_NO_KEY')
+      }
+      if (res.status === 404) {
+        throw new Error('EDGE_FUNCTION_NOT_DEPLOYED')
+      }
+      throw new Error(err.error || 'Lỗi server ' + res.status)
     }
 
     const data = await res.json()
-    const summary = data.content?.[0]?.text || 'Không có kết quả'
-
-    // Save to Supabase
-    const saveResult = await sb.from('ai_summaries').insert({
-      project_id:   proj.id,
-      project_name: proj.name,
-      summary_text: summary,
-      stats: JSON.stringify({
-        total: leaf.length, done: done.length, late: lateCount,
-        avg_delay: avgDelay, total_pct: totalPct, week
-      }),
-      created_by: STATE.user.email,
-      week_number: week,
-      year: new Date().getFullYear()
-    })
+    const summary = data.summary || 'Không có kết quả'
 
     loading(false)
     showAISummaryModal(summary, today, week, proj.name)
 
   } catch(e) {
     loading(false)
-    if (e.message.includes('api_key') || e.message.includes('401') || e.message.includes('403')) {
-      toast('Claude API chưa được cấu hình. Xem hướng dẫn.', 'error')
-      showAPISetupGuide()
-    } else if (e.message.includes('ai_summaries')) {
-      // Table doesn't exist yet — show result anyway
-      const data2 = e  // won't reach here in normal flow
-      toast('Lưu lịch sử thất bại (chưa tạo bảng), nhưng tóm tắt đã được tạo', '')
+    if (e.message === 'EDGE_FUNCTION_NOT_DEPLOYED') {
+      showEdgeFunctionGuide()
+    } else if (e.message === 'EDGE_FUNCTION_NO_KEY') {
+      showAPIKeyGuide()
     } else {
       toast('Lỗi: ' + e.message, 'error')
     }
@@ -4071,34 +4069,36 @@ async function showAISummaryHistory() {
   `, `<button class="btn btn-secondary" onclick="closeModal()">Đóng</button>`)
 }
 
-function showAPISetupGuide() {
-  openModal('⚙️ Cấu hình Claude API', `
+function showEdgeFunctionGuide() {
+  openModal('⚙️ Cần deploy Edge Function', `
     <div style="font-size:13px;line-height:1.8;color:var(--gray6)">
-      <p>Tính năng AI Tóm tắt cần <strong>Claude API key</strong> từ Anthropic.</p>
-      <div style="background:var(--gray1);border-radius:var(--radius);padding:12px;font-size:12px;margin:10px 0">
-        <strong>Cách lấy API key:</strong><br>
-        1. Vào <a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">console.anthropic.com</a><br>
-        2. Đăng ký / đăng nhập → API Keys → Create Key<br>
-        3. Copy key (dạng <code>sk-ant-api03-...</code>)
+      <p style="margin-bottom:10px">Tính năng AI Tóm tắt cần deploy 2 thứ trong Supabase:</p>
+      <div style="background:var(--gray1);border-radius:var(--radius);padding:12px;font-size:12px;margin-bottom:10px">
+        <strong>Bước 1 — Deploy Edge Function <code>ai-summary</code>:</strong><br>
+        1. Vào <a href="https://supabase.com/dashboard/project/gqelblpdujdqdddisjei/functions" target="_blank" style="color:var(--blue)">Supabase → Edge Functions</a><br>
+        2. New function → tên: <strong>ai-summary</strong><br>
+        3. Paste nội dung file <strong>ai-summary.ts</strong> đã được gửi → Deploy
       </div>
-      <div class="form-group" style="margin-top:10px">
-        <label class="form-label">Dán API Key vào đây:</label>
-        <input class="form-input" type="password" id="api-key-input" placeholder="sk-ant-api03-...">
-        <div style="font-size:11px;color:var(--gray4);margin-top:4px">Key được lưu trong localStorage của trình duyệt này</div>
+      <div style="background:var(--gray1);border-radius:var(--radius);padding:12px;font-size:12px">
+        <strong>Bước 2 — Thêm Claude API key vào Secrets:</strong><br>
+        1. Vào <a href="https://supabase.com/dashboard/project/gqelblpdujdqdddisjei/settings/functions" target="_blank" style="color:var(--blue)">Edge Functions → Secrets</a><br>
+        2. Add secret: tên <strong>CLAUDE_API_KEY</strong>, giá trị là key từ <a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">console.anthropic.com</a>
       </div>
     </div>
-  `, `
-    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
-    <button class="btn btn-primary" onclick="saveAPIKey()">💾 Lưu & Thử lại</button>
-  `)
+  `, `<button class="btn btn-primary" onclick="closeModal()">Đã hiểu</button>`)
 }
 
-function saveAPIKey() {
-  const key = document.getElementById('api-key-input')?.value?.trim()
-  if (!key || !key.startsWith('sk-ant')) { toast('API key không hợp lệ', 'error'); return }
-  localStorage.setItem('claude_api_key', key)
-  closeModal()
-  toast('Đã lưu API key! Thử tóm tắt lại.', 'success')
+function showAPIKeyGuide() {
+  openModal('🔑 Thiếu Claude API Key', `
+    <div style="font-size:13px;line-height:1.8;color:var(--gray6)">
+      <p>Edge Function đã deploy nhưng chưa có API key.</p>
+      <div style="background:var(--gray1);border-radius:var(--radius);padding:12px;font-size:12px">
+        1. Vào <a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">console.anthropic.com</a> → API Keys → Create Key<br>
+        2. Vào <a href="https://supabase.com/dashboard/project/gqelblpdujdqdddisjei/settings/functions" target="_blank" style="color:var(--blue)">Supabase → Edge Functions → Secrets</a><br>
+        3. Add secret: <strong>CLAUDE_API_KEY</strong> = key vừa tạo
+      </div>
+    </div>
+  `, `<button class="btn btn-primary" onclick="closeModal()">Đã hiểu</button>`)
 }
 
 // ═══════════════════════════════════════════════════════════
