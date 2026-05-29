@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VelaE&C — Theo dõi tiến độ</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 /* ── Config ── */
 :root {
@@ -3657,7 +3659,16 @@ async function saveTaskSettings(taskId) {
 async function exportPDF() {
   const proj = STATE.currentProject
   if (!proj) { toast('Chưa có dự án', 'error'); return }
-  if (!window.html2canvas) { toast('Đang tải thư viện, thử lại sau 3 giây', 'error'); return }
+  // Wait for libraries to load (max 5s)
+  let waited = 0
+  while ((!window.html2canvas || !window.jspdf) && waited < 50) {
+    await new Promise(r => setTimeout(r, 100))
+    waited++
+  }
+  if (!window.html2canvas || !window.jspdf) {
+    toast('Không tải được thư viện PDF. Kiểm tra kết nối mạng.', 'error')
+    return
+  }
   const { jsPDF } = window.jspdf
 
   loading(true, 'Chuẩn bị dữ liệu...')
@@ -3798,12 +3809,6 @@ async function exportPDF() {
 }
 
 
-function hexToRgb(hex) {
-  const r = parseInt(hex.slice(1,3),16)
-  const g = parseInt(hex.slice(3,5),16)
-  const b = parseInt(hex.slice(5,7),16)
-  return [r,g,b]
-}
 
 // ═══════════════════════════════════════════════════════════
 // EVENT LISTENERS
