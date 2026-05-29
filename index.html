@@ -3879,8 +3879,8 @@ async function generateAISummary() {
     // Top 5 worst delays
     const worstTasks = late.slice(0,5).map(t =>
       `- ${t.name}: trễ ${t._delay} ngày, hiện ${t.pct_complete||0}%${t._delayLabel ? ' ('+t._delayLabel+')' : ''}`
-    ).join('
-')
+    ).join('\n')
+
 
     // Summary stats
     const totalPct = leaf.length > 0 ? Math.round(leaf.reduce((s,t)=>s+(t.display_pct||t.pct_complete||0),0)/leaf.length) : 0
@@ -3891,8 +3891,7 @@ async function generateAISummary() {
     const lvl2 = tasks.filter(t => t.is_summary && t.outline_level === 2)
     const lvl2Summary = lvl2.map(t =>
       `- ${t.name}: ${t.display_pct||t.pct_complete||0}% (${t._delayLabel||'Đúng KH'})`
-    ).join('
-')
+    ).join('\n')
 
     const prompt = `Bạn là chuyên gia quản lý dự án xây dựng. Phân tích tiến độ dự án sau và tóm tắt ngắn gọn bằng tiếng Việt.
 
