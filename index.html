@@ -3893,18 +3893,40 @@ async function generateAISummary() {
       `- ${t.name}: ${t.display_pct||t.pct_complete||0}% (${t._delayLabel||'Đúng KH'})`
     ).join('\n')
 
+    // Query lịch sử 3 tuần gần nhất để so sánh xu hướng
+    let historyContext = ''
+    try {
+      const { data: recentHistory } = await sb.from('ai_summaries')
+        .select('week_number, year, stats, created_at')
+        .eq('project_id', proj.id)
+        .order('created_at', { ascending: false })
+        .limit(3)
+
+      if (recentHistory?.length) {
+        historyContext = '\nDỮ LIỆU CÁC TUẦN TRƯỚC (để so sánh xu hướng):\n'
+        recentHistory.forEach(h => {
+          const s = h.stats ? JSON.parse(h.stats) : {}
+          historyContext += `- Tuần ${h.week_number}/${h.year}: ${s.total_pct||0}% HT, ${s.late||0} công tác chậm, trễ TB ${s.avg_delay||0} ngày\n`
+        })
+        historyContext += '(So sánh với tuần hiện tại để đánh giá xu hướng tốt hơn hay xấu hơn)\n'
+      }
+    } catch(e) {
+      // Bảng chưa có dữ liệu lịch sử — bỏ qua
+    }
+
     const prompt = `Bạn là chuyên gia quản lý dự án xây dựng. Phân tích tiến độ dự án sau và tóm tắt ngắn gọn bằng tiếng Việt.
 
 DỰ ÁN: ${proj.name} (${proj.code})
 NGÀY BÁO CÁO: ${today} - Tuần ${week}
 THỜI GIAN: ${proj.start_date} → ${proj.finish_date}
+TIẾN ĐỘ TỔNG: Đã đi ${Math.round((new Date()-new Date(proj.start_date))/(new Date(proj.finish_date)-new Date(proj.start_date))*100)}% thời gian, hoàn thành ${totalPct}% khối lượng
 
 TỔNG QUAN:
 - Tổng công tác: ${leaf.length} | Hoàn thành: ${done.length} | Đang làm: ${leaf.length-done.length-notStarted.length}
 - Chậm tiến độ: ${lateCount} công tác | Trễ trung bình: ${avgDelay} ngày
 - Chưa bắt đầu dù đã đến hạn: ${notStarted.length} công tác
-- % hoàn thành tổng thể ước tính: ${totalPct}%
-
+- % hoàn thành tổng thể: ${totalPct}%
+${historyContext}
 TIẾN ĐỘ CÁC HẠNG MỤC CHÍNH:
 ${lvl2Summary}
 
@@ -3912,12 +3934,20 @@ TOP ${Math.min(5,late.length)} CÔNG TÁC CHẬM NHẤT:
 ${worstTasks || 'Không có'}
 
 Hãy viết báo cáo TÓM TẮT gồm 4 phần, mỗi phần 2-4 câu ngắn gọn, súc tích:
-1. **TỔNG QUAN TIẾN ĐỘ** - Đánh giá chung tình hình hiện tại
-2. **ĐIỂM CHÚ Ý** - Top 3 rủi ro/vấn đề cần xử lý ngay
-3. **XU HƯỚNG TUẦN TỚI** - Dự báo và cảnh báo
-4. **KHUYẾN NGHỊ** - 2-3 hành động cụ thể ưu tiên cao
 
-Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Không dùng bullet points lồng nhau.`
+## 1. TỔNG QUAN TIẾN ĐỘ
+Đánh giá chung: dự án đang ở mức nào so với kế hoạch tổng thể (tính theo % thời gian đã qua vs % hoàn thành). Nêu 1-2 điểm tích cực nếu có.
+
+## 2. ĐIỂM CHÚ Ý
+Top 3 rủi ro/vấn đề cụ thể cần xử lý ngay. Nêu tên công tác, số ngày trễ, hậu quả nếu không xử lý.
+
+## 3. XU HƯỚNG TUẦN TỚI
+Dự báo dựa trên tốc độ hiện tại. Cảnh báo nếu có nguy cơ vượt deadline tổng.
+
+## 4. KHUYẾN NGHỊ
+2-3 hành động CỤ THỂ, có thể thực hiện ngay trong tuần tới. Ưu tiên theo mức độ tác động.
+
+Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Dùng **bold** cho tên công tác và số liệu quan trọng.`
 
     // Gọi qua Supabase Edge Function (tránh CORS khi gọi trực tiếp từ browser)
     const { data: { session } } = await sb.auth.getSession()
@@ -3973,18 +4003,24 @@ Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Không d
 }
 
 function showAISummaryModal(text, date, week, projName) {
-  // Format markdown-like text
-  const formatted = text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n\n/g, '</p><p style="margin-top:10px">')
-    .replace(/\n/g, '<br>')
+  // Render markdown: ## heading, **bold**, newlines
+  function mdRender(t) {
+    return t
+      .split('\n').map(line => {
+        if (line.startsWith('## ')) return '<div style="font-size:14px;font-weight:700;color:var(--navy);margin:14px 0 6px">' + line.slice(3) + '</div>'
+        if (line.startsWith('# '))  return '<div style="font-size:15px;font-weight:700;color:var(--navy);margin:0 0 10px">' + line.slice(2) + '</div>'
+        const l = line.replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--gray8)">$1</strong>')
+        return l ? '<div style="margin:3px 0">' + l + '</div>' : '<div style="height:6px"></div>'
+      }).join('')
+  }
 
   openModal(`🤖 AI Tóm tắt tiến độ — Tuần ${week}`, `
-    <div style="padding:10px 14px;background:var(--lblue);border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:var(--gray6)">
-      <strong>${projName}</strong> · Ngày ${date} · Tuần ${week}
+    <div style="padding:10px 14px;background:var(--lblue);border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:var(--gray6);display:flex;justify-content:space-between">
+      <strong>${projName}</strong>
+      <span>Ngày ${date} · Tuần ${week}</span>
     </div>
-    <div style="font-size:13px;line-height:1.8;color:var(--gray7)">
-      <p>${formatted}</p>
+    <div style="font-size:13px;line-height:1.7;color:var(--gray7);max-height:65vh;overflow-y:auto;padding-right:4px">
+      ${mdRender(text)}
     </div>
   `, `
     <button class="btn btn-secondary" onclick="closeModal()">Đóng</button>
@@ -4048,7 +4084,7 @@ async function showAISummaryHistory() {
     const date = new Date(h.created_at).toLocaleDateString('vi-VN')
     const preview = h.summary_text?.slice(0,120) + '...'
     return `<div style="padding:12px 14px;border-bottom:0.5px solid var(--gray2);cursor:pointer"
-               onclick="showAISummaryModal(${JSON.stringify(h.summary_text).replace(/</g,'&lt;')}, '${date}', '${h.week_number}', '${h.project_name}')"
+               onclick="showAISummaryModal(${JSON.stringify(h.summary_text||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}, '${date}', '${h.week_number||0}', '${(h.project_name||'').replace(/'/g,'')}')"  "
                onmouseover="this.style.background='var(--gray0)'" onmouseout="this.style.background=''">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <span style="font-size:12px;font-weight:600;color:var(--gray8)">Tuần ${h.week_number}/${h.year}</span>
