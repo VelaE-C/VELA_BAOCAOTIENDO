@@ -3435,7 +3435,7 @@ async function exportWeeklyReport() {
     const today   = new Date().toLocaleDateString('vi-VN')
 
     // Build level 3 table rows
-    const lvl3 = tasks.filter(t => t.is_summary && t.outline_level <= 3)
+    const lvl3 = tasks.filter(t => t.is_summary && t.outline_level <= 3)  // level 1-2-3
     const tableRows = lvl3.map(t => {
       const pct   = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
       const delay = t._delay || 0
@@ -3482,7 +3482,7 @@ async function exportWeeklyReport() {
           </div>
           <div style="width:70px;text-align:center;font-weight:600">Lệch</div>
         </div>`
-      const ganttTasks = tasks.filter(t => t.is_summary && t.outline_level <= 2 && t.kh_start)
+      const ganttTasks = tasks.filter(t => t.is_summary && t.outline_level <= 3 && t.kh_start)
       ganttTasks.forEach((t, idx) => {
         const khL = Math.max(0,Math.min(100,Math.round((new Date(t.kh_start)-tl.start)/rangeMs*100)))
         const khR = Math.max(0,Math.min(100,Math.round((new Date(t.kh_finish||t.kh_start)-tl.start)/rangeMs*100)))
@@ -3502,9 +3502,10 @@ async function exportWeeklyReport() {
         const dlyClr = isLate2 ? '#DC2626' : isAhead2 ? '#16A34A' : '#64748B'
         const dlyTxt = isLate2 ? `+${delay}d` : isAhead2 ? `${delay}d` : '—'
         const rowBg2 = idx%2===0 ? '#F8FAFC' : '#FFFFFF'
-        const fw2 = t.outline_level === 1 ? '700' : '500'
-        ganttHtml += `<div style="display:flex;align-items:center;background:${rowBg2};border-bottom:0.5px solid #E2E8F0;height:24px">
-          <div style="width:180px;flex-shrink:0;font-size:9px;font-weight:${fw2};padding:0 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${t.name}</div>
+        const fw2 = t.outline_level === 1 ? '700' : t.outline_level === 2 ? '600' : '400'
+        const gIndent = (t.outline_level - 1) * 10
+        ganttHtml += `<div style="display:flex;align-items:center;background:${rowBg2};border-bottom:0.5px solid #E2E8F0;height:22px">
+          <div style="width:180px;flex-shrink:0;font-size:${t.outline_level===3?'8':'9'}px;font-weight:${fw2};padding:0 6px;padding-left:${6+gIndent}px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${t.name}</div>
           <div style="flex:1;position:relative;height:100%">
             <div style="position:absolute;height:6px;top:3px;left:${khL}%;width:${khW}%;background:#93C5FD;border-radius:2px"></div>
             ${ttBar}
@@ -3661,29 +3662,51 @@ async function exportWeeklyReport() {
     document.body.removeChild(container)
 
     const { jsPDF } = window.jspdf
-    const imgData = canvas.toDataURL('image/jpeg', 0.92)
-    const pdfW = 210  // A4 mm
-    const pdfH = Math.round(canvas.height / canvas.width * pdfW)
+    const pdfW = 210        // A4 width mm
+    const pdfH = Math.round(canvas.height / canvas.width * pdfW)  // proportional height
 
-    const pdf = new jsPDF({ orientation: pdfH > 297 ? 'portrait' : 'portrait', unit: 'mm', format: 'a4' })
+    // Strategy: split at A4 boundaries but only at row boundaries
+    // Use full-height custom page to avoid cutting rows
+    const A4H = 297
+    const imgData = canvas.toDataURL('image/jpeg', 0.93)
 
-    // If content > 1 page, split
-    const pageH = 297
-    let yPos = 0
-    while (yPos < pdfH) {
-      if (yPos > 0) pdf.addPage()
-      const sliceH = Math.min(pageH, pdfH - yPos)
-      const sliceCanvas = document.createElement('canvas')
-      sliceCanvas.width = canvas.width
-      sliceCanvas.height = Math.round(sliceH / pdfH * canvas.height)
-      const ctx2 = sliceCanvas.getContext('2d')
-      ctx2.drawImage(canvas, 0, Math.round(yPos / pdfH * canvas.height), canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height)
-      pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, sliceH)
-      yPos += pageH
+    if (pdfH <= A4H * 1.15) {
+      // Short enough — single A4 page, scale to fit
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
+      const scale = Math.min(1, A4H / pdfH)
+      const drawH = pdfH * scale
+      const drawW = pdfW * scale
+      const offsetX = (pdfW - drawW) / 2
+      pdf.addImage(imgData, 'JPEG', offsetX, 0, drawW, drawH)
+      const fn = 'BC-TD_' + proj.code.replace(/[^a-zA-Z0-9]/g, '_') + '_Tuan' + week + '_' + year + '.pdf'
+      pdf.save(fn)
+    } else {
+      // Multi-page: use custom page height = full content (no cutting)
+      // Split into A4-sized slices by pixel rows
+      const pdf = new jsPDF({ unit: 'mm', format: [pdfW, A4H] })
+      const pxPerPage = Math.floor(canvas.height * A4H / pdfH)  // pixels per A4 page
+      const totalPages = Math.ceil(canvas.height / pxPerPage)
+
+      for (let pg = 0; pg < totalPages; pg++) {
+        if (pg > 0) pdf.addPage([pdfW, A4H])
+        const srcY = pg * pxPerPage
+        const srcH = Math.min(pxPerPage, canvas.height - srcY)
+        const sliceH_mm = srcH / canvas.height * pdfH
+
+        // Create slice canvas
+        const slice = document.createElement('canvas')
+        slice.width = canvas.width
+        slice.height = srcH
+        const ctx2 = slice.getContext('2d')
+        ctx2.fillStyle = '#ffffff'
+        ctx2.fillRect(0, 0, slice.width, slice.height)
+        ctx2.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH)
+
+        pdf.addImage(slice.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, pdfW, sliceH_mm)
+      }
+      const fn = 'BC-TD_' + proj.code.replace(/[^a-zA-Z0-9]/g, '_') + '_Tuan' + week + '_' + year + '.pdf'
+      pdf.save(fn)
     }
-
-    const fn = 'BC-TD_' + proj.code.replace(/[^a-zA-Z0-9]/g, '_') + '_Tuan' + week + '_' + year + '.pdf'
-    pdf.save(fn)
     toast('Đã xuất PDF: ' + fn, 'success')
 
   } catch(e) {
