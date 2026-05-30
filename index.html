@@ -3525,7 +3525,6 @@ async function exportWeeklyReport() {
     // Parse và render AI content
     const aiLines = aiSummary.split('\n')
     aiLines.forEach(line => {
-    aiLines.forEach(line => {
       if (!line.trim()) { y += 3; return }
       checkPage(8)
 
@@ -3684,7 +3683,6 @@ async function exportWeeklyReport() {
   } finally {
     loading(false)
   }
-}
 }
 
 
