@@ -3406,6 +3406,7 @@ async function deletePhoto(photoId, photoUrl) {
 // EXPORT WEEKLY REPORT (text-based)
 // ═══════════════════════════════════════════════════════════
 async function exportWeeklyReport() {
+  const LOGO_URL = 'https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png'
   const proj = STATE.currentProject
   if (!proj) { toast('Chưa có dự án', 'error'); return }
 
