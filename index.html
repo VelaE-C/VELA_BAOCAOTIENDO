@@ -4082,11 +4082,23 @@ function showAISummaryModal(text, date, week, projName) {
       <strong>${projName}</strong>
       <span>Ngày ${date} · Tuần ${week}</span>
     </div>
-    <div style="font-size:13px;line-height:1.7;color:var(--gray7);max-height:65vh;overflow-y:auto;padding-right:4px">
+    <div style="font-size:13px;line-height:1.7;color:var(--gray7);max-height:45vh;overflow-y:auto;padding-right:4px">
       ${mdRender(text)}
+    </div>
+    <div style="margin-top:12px;border-top:0.5px solid var(--gray2);padding-top:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--gray7);margin-bottom:6px">
+        📝 Ghi chú context thực tế (tùy chọn — để phân tích lại chính xác hơn):
+      </div>
+      <textarea id="ai-user-note" rows="3"
+        style="width:100%;padding:8px 10px;border:0.5px solid var(--gray3);border-radius:var(--radius);font-size:12px;resize:vertical;font-family:inherit;line-height:1.6;background:var(--gray0)"
+        placeholder="VD: Lô O18 do CĐT chậm phát hành bản vẽ 3 tuần. BCH cam kết xong T3 tuần 23. Lô O16B đã bổ sung 1 tổ thêm..."></textarea>
+      <div style="font-size:11px;color:var(--gray4);margin-top:4px">
+        AI sẽ tích hợp context này → báo cáo sát thực tế hơn. Bấm "🔄 Phân tích lại" sau khi nhập.
+      </div>
     </div>
   `, `
     <button class="btn btn-secondary" onclick="closeModal()">Đóng</button>
+    <button class="btn btn-secondary" onclick="reAnalyzeWithNote()" style="border-color:var(--blue);color:var(--blue)">🔄 Phân tích lại</button>
     <button class="btn btn-primary" onclick="closeModal();exportWeeklyReport()">📄 Xuất báo cáo</button>
   `)
 }
