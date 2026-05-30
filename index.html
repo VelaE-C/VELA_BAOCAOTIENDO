@@ -3883,7 +3883,11 @@ async function generateAISummary() {
 
 
     // Summary stats
-    const totalPct = leaf.length > 0 ? Math.round(leaf.reduce((s,t)=>s+(t.display_pct||t.pct_complete||0),0)/leaf.length) : 0
+    // Dùng % của root task (roll-up có trọng số) thay vì avg leaf — giống Dashboard
+    const rootTask = tasks.find(t => t.outline_level === 1)
+    const totalPct = rootTask
+      ? (rootTask.display_pct !== undefined ? rootTask.display_pct : (rootTask.pct_complete||0))
+      : (leaf.length > 0 ? Math.round(leaf.reduce((s,t)=>s+(t.display_pct||t.pct_complete||0),0)/leaf.length) : 0)
     const lateCount = late.length
     const avgDelay = late.length > 0 ? Math.round(late.reduce((s,t)=>s+(t._delay||0),0)/late.length) : 0
 
@@ -3900,7 +3904,7 @@ async function generateAISummary() {
         .select('week_number, year, stats, created_at')
         .eq('project_id', proj.id)
         .order('created_at', { ascending: false })
-        .limit(3)
+        .limit(5)
 
       if (recentHistory?.length) {
         historyContext = '\nDỮ LIỆU CÁC TUẦN TRƯỚC (để so sánh xu hướng):\n'
@@ -3974,6 +3978,7 @@ ${lvl2SummaryClean}
 TOP ${Math.min(5,validLate.length)} CÔNG TÁC CHẬM NHẤT (delay hợp lệ):
 ${validWorstTasks || 'Không có công tác chậm hợp lệ'}
 
+${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
 LƯU Ý QUAN TRỌNG:
 - Chỉ đánh giá dựa trên dữ liệu được cung cấp ở trên
 - Không suy diễn hoặc phóng đại số liệu
@@ -4002,8 +4007,11 @@ Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Dùng **
     if (!token) throw new Error('Chưa đăng nhập')
 
     const statsPayload = {
-      total: leaf.length, done: done.length, late: lateCount,
-      avg_delay: avgDelay, total_pct: totalPct, week
+      total: leaf.length, done: done.length,
+      late: validLate.length,
+      avg_delay: validAvgDelay,
+      total_pct: totalPct,  // % root task (roll-up, giống Dashboard)
+      week
     }
 
     // Xóa bản cũ cùng tuần/năm trước khi lưu mới (tránh trùng lặp)
@@ -4068,7 +4076,8 @@ function showAISummaryModal(text, date, week, projName) {
       }).join('')
   }
 
-  openModal(`🤖 AI Tóm tắt tiến độ — Tuần ${week}`, `
+  const iterLabel = STATE._aiUserNote ? ' + ghi chú KTTC' : ''
+  openModal(`🤖 AI Tóm tắt tiến độ — Tuần ${week}${iterLabel}`, `
     <div style="padding:10px 14px;background:var(--lblue);border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:var(--gray6);display:flex;justify-content:space-between">
       <strong>${projName}</strong>
       <span>Ngày ${date} · Tuần ${week}</span>
@@ -4173,6 +4182,15 @@ async function showAISummaryHistory() {
       })
     })
   }, 150)
+}
+
+async function reAnalyzeWithNote() {
+  const note = document.getElementById('ai-user-note')?.value?.trim()
+  if (!note) { toast('Vui lòng nhập ghi chú thực tế trước', 'error'); return }
+  STATE._aiUserNote = note
+  closeModal()
+  await generateAISummary()
+  STATE._aiUserNote = null
 }
 
 function showEdgeFunctionGuide() {
