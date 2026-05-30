@@ -3914,24 +3914,71 @@ async function generateAISummary() {
       // Bảng chưa có dữ liệu lịch sử — bỏ qua
     }
 
-    const prompt = `Bạn là chuyên gia quản lý dự án xây dựng. Phân tích tiến độ dự án sau và tóm tắt ngắn gọn bằng tiếng Việt.
+    // Tính timeline thực tế từ task (bỏ qua project.start_date từ XML không chính xác)
+    const tlActual = getActualTimeline(tasks)
+    const actualStartDate = tlActual ? tlActual.start.toLocaleDateString('vi-VN') : proj.start_date
+    const actualEndDate   = tlActual ? tlActual.end.toLocaleDateString('vi-VN')   : proj.finish_date
+
+    // Tính % thời gian đã qua dựa trên task dates thực tế (không phải XML project dates)
+    let timeElapsedPct = '—'
+    if (tlActual) {
+      const totalMs  = tlActual.end - tlActual.start
+      const elapsedMs = new Date() - tlActual.start
+      const pctTime = Math.max(0, Math.min(100, Math.round(elapsedMs / totalMs * 100)))
+      timeElapsedPct = pctTime + '%'
+    }
+
+    // Chỉ lấy task trễ CÓ delay hợp lệ (> 0, không null)
+    const validLate = late.filter(t => t._delay > 0 && t._delay < 500)
+    const validAvgDelay = validLate.length > 0
+      ? Math.round(validLate.reduce((s,t) => s+(t._delay||0), 0) / validLate.length)
+      : 0
+    const validWorstTasks = validLate.slice(0,5).map(t =>
+      '- ' + t.name + ': trễ ' + t._delay + ' ngày, đạt ' + (t.pct_complete||0) + '%'
+        + (t._delayLabel && t._delayLabel !== '—' ? ' (' + t._delayLabel + ')' : '')
+    ).join('\n')
+
+    // Chưa bắt đầu hợp lệ (kh_start trong vòng 60 ngày qua)
+    const now60 = new Date(); now60.setDate(now60.getDate() - 60)
+    const validNotStarted = notStarted.filter(t =>
+      t.kh_start && new Date(t.kh_start) >= now60
+    )
+
+    // Level 2 summary — bỏ hạng mục delay bất thường (> 365 ngày)
+    const lvl2Clean = tasks.filter(t => t.is_summary && t.outline_level === 2)
+    const lvl2SummaryClean = lvl2Clean.map(t => {
+      const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
+      const delay = t._delay
+      let status = 'Đúng KH'
+      if (delay > 0 && delay < 365) status = 'Trễ ' + delay + ' ngày'
+      else if (delay < 0) status = 'Sớm ' + Math.abs(delay) + ' ngày'
+      return '- ' + t.name + ': ' + pct + '% (' + status + ')'
+    }).join('\n')
+
+    const prompt = `Bạn là chuyên gia quản lý dự án xây dựng tại Việt Nam. Phân tích tiến độ dự án và viết báo cáo ngắn gọn, chính xác bằng tiếng Việt.
 
 DỰ ÁN: ${proj.name} (${proj.code})
 NGÀY BÁO CÁO: ${today} - Tuần ${week}
-THỜI GIAN: ${proj.start_date} → ${proj.finish_date}
-TIẾN ĐỘ TỔNG: Đã đi ${Math.round((new Date()-new Date(proj.start_date))/(new Date(proj.finish_date)-new Date(proj.start_date))*100)}% thời gian, hoàn thành ${totalPct}% khối lượng
+THỜI GIAN THI CÔNG: ${actualStartDate} → ${actualEndDate}
+TIẾN ĐỘ: Đã đi ${timeElapsedPct} thời gian thi công, hoàn thành ${totalPct}% khối lượng
 
 TỔNG QUAN:
-- Tổng công tác: ${leaf.length} | Hoàn thành: ${done.length} | Đang làm: ${leaf.length-done.length-notStarted.length}
-- Chậm tiến độ: ${lateCount} công tác | Trễ trung bình: ${avgDelay} ngày
-- Chưa bắt đầu dù đã đến hạn: ${notStarted.length} công tác
+- Tổng công tác: ${leaf.length} | Hoàn thành: ${done.length} | Đang thi công: ${leaf.filter(t=>t.tt_start&&(t.pct_complete||0)<100).length}
+- Chậm tiến độ: ${validLate.length} công tác | Trễ trung bình: ${validAvgDelay} ngày
+- Chưa bắt đầu (quá hạn trong 60 ngày gần đây): ${validNotStarted.length} công tác
 - % hoàn thành tổng thể: ${totalPct}%
 ${historyContext}
-TIẾN ĐỘ CÁC HẠNG MỤC CHÍNH:
-${lvl2Summary}
+TIẾN ĐỘ THEO HẠNG MỤC CHÍNH:
+${lvl2SummaryClean}
 
-TOP ${Math.min(5,late.length)} CÔNG TÁC CHẬM NHẤT:
-${worstTasks || 'Không có'}
+TOP ${Math.min(5,validLate.length)} CÔNG TÁC CHẬM NHẤT (delay hợp lệ):
+${validWorstTasks || 'Không có công tác chậm hợp lệ'}
+
+LƯU Ý QUAN TRỌNG:
+- Chỉ đánh giá dựa trên dữ liệu được cung cấp ở trên
+- Không suy diễn hoặc phóng đại số liệu
+- Nếu delay > 100 ngày mà % hoàn thành = 0 và chưa có tt_start → có thể là task chưa đến giai đoạn thi công, không phải trễ thực sự
+- % thời gian đã qua được tính từ ngày bắt đầu thi công thực tế (không phải ngày tạo file kế hoạch)
 
 Hãy viết báo cáo TÓM TẮT gồm 4 phần, mỗi phần 2-4 câu ngắn gọn, súc tích:
 
