@@ -763,7 +763,9 @@ function dashboard() {
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="showAISummaryHistory()">📋 Lịch sử AI</button>
-      <button class="btn btn-primary btn-sm" onclick="generateAISummary()">🤖 AI Tóm tắt tiến độ</button>
+      ${STATE.role === 'admin' ? `
+        <button class="btn btn-primary btn-sm" onclick="generateAISummary()">🤖 AI Tóm tắt tiến độ</button>
+      ` : ''}
       <button class="btn btn-secondary btn-sm" onclick="exportWeeklyReport()">📄 Xuất báo cáo tuần</button>
     </div>
   </div>
@@ -3859,6 +3861,10 @@ async function exportPDF() {
 // AI SUMMARY — Claude API
 // ═══════════════════════════════════════════════════════════
 async function generateAISummary() {
+  if (STATE.role !== 'admin') {
+    toast('Chỉ admin mới có thể tạo AI tóm tắt', 'error')
+    return
+  }
   const proj = STATE.currentProject
   if (!proj) { toast('Chưa có dự án', 'error'); return }
 
@@ -3949,15 +3955,39 @@ async function generateAISummary() {
     )
 
     // Level 2 summary — bỏ hạng mục delay bất thường (> 365 ngày)
-    const lvl2Clean = tasks.filter(t => t.is_summary && t.outline_level === 2)
-    const lvl2SummaryClean = lvl2Clean.map(t => {
+    // Nhóm 1: Task đang thi công (chiến trường thực sự tuần này)
+    const inProgress = leaf.filter(t => t.tt_start && (t.pct_complete||0) < 100)
+    const inProgressSummary = inProgress.slice(0,10).map(t => {
+      const pct = t.pct_complete||0
+      const d = t._delay || 0
+      const delayStr = d > 0 ? ', trễ ' + d + ' ngày' : d < 0 ? ', sớm ' + Math.abs(d) + ' ngày' : ''
+      const noteStr = t.latest_note ? ' [Ghi chú: ' + t.latest_note + ']' : ''
+      return '- ' + t.name + ': ' + pct + '%' + delayStr + noteStr
+    }).join('\n')
+
+    // Nhóm 2: Task trễ hợp lệ kèm ghi chú (nếu có)
+    const lateWithNote = validLate.slice(0,8).map(t => {
+      const noteStr = t.latest_note ? ' | Ghi chú: ' + t.latest_note : ''
+      return '- ' + t.name + ': trễ ' + t._delay + ' ngày, đạt ' + (t.pct_complete||0) + '%' + noteStr
+    }).join('\n')
+
+    // Nhóm 3: Level 3 summary (chi tiết hơn level 2 cho BGĐ)
+    const lvl3Clean = tasks.filter(t => t.is_summary && t.outline_level === 3)
+    const lvl3SummaryClean = lvl3Clean.map(t => {
       const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
       const delay = t._delay
       let status = 'Đúng KH'
       if (delay > 0 && delay < 365) status = 'Trễ ' + delay + ' ngày'
       else if (delay < 0) status = 'Sớm ' + Math.abs(delay) + ' ngày'
-      return '- ' + t.name + ': ' + pct + '% (' + status + ')'
+      // Tìm parent level 2 để thêm context
+      const parent = tasks.find(p => p.is_summary && p.outline_level === 2
+        && t.wbs_code && p.wbs_code && t.wbs_code.startsWith(p.wbs_code + '.'))
+      const parentPrefix = parent ? '[' + parent.name.slice(0,20) + '] ' : ''
+      return '- ' + parentPrefix + t.name + ': ' + pct + '% (' + status + ')'
     }).join('\n')
+
+    // Giữ lvl2SummaryClean cho backward compat
+    const lvl2SummaryClean = lvl3SummaryClean
 
     const prompt = `Bạn là chuyên gia quản lý dự án xây dựng tại Việt Nam. Phân tích tiến độ dự án và viết báo cáo ngắn gọn, chính xác bằng tiếng Việt.
 
@@ -3972,11 +4002,14 @@ TỔNG QUAN:
 - Chưa bắt đầu (quá hạn trong 60 ngày gần đây): ${validNotStarted.length} công tác
 - % hoàn thành tổng thể: ${totalPct}%
 ${historyContext}
-TIẾN ĐỘ THEO HẠNG MỤC CHÍNH:
-${lvl2SummaryClean}
+CHIẾN TRƯỜNG TUẦN NÀY — ĐANG THI CÔNG (${inProgress.length} công tác):
+${inProgressSummary || 'Chưa có công tác nào đang thi công'}
 
-TOP ${Math.min(5,validLate.length)} CÔNG TÁC CHẬM NHẤT (delay hợp lệ):
-${validWorstTasks || 'Không có công tác chậm hợp lệ'}
+CÔNG TÁC CHẬM CÓ DELAY HỢP LỆ (${validLate.length} công tác):
+${lateWithNote || 'Không có'}
+
+TIẾN ĐỘ CHI TIẾT THEO HẠNG MỤC (level 3):
+${lvl3SummaryClean || 'Không có dữ liệu'}
 
 ${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
 LƯU Ý QUAN TRỌNG:
@@ -4085,6 +4118,7 @@ function showAISummaryModal(text, date, week, projName) {
     <div style="font-size:13px;line-height:1.7;color:var(--gray7);max-height:45vh;overflow-y:auto;padding-right:4px">
       ${mdRender(text)}
     </div>
+    ${STATE.role === 'admin' ? `
     <div style="margin-top:12px;border-top:0.5px solid var(--gray2);padding-top:12px">
       <div style="font-size:12px;font-weight:600;color:var(--gray7);margin-bottom:6px">
         📝 Ghi chú context thực tế (tùy chọn — để phân tích lại chính xác hơn):
@@ -4096,9 +4130,10 @@ function showAISummaryModal(text, date, week, projName) {
         AI sẽ tích hợp context này → báo cáo sát thực tế hơn. Bấm "🔄 Phân tích lại" sau khi nhập.
       </div>
     </div>
+    ` : ''}
   `, `
     <button class="btn btn-secondary" onclick="closeModal()">Đóng</button>
-    <button class="btn btn-secondary" onclick="reAnalyzeWithNote()" style="border-color:var(--blue);color:var(--blue)">🔄 Phân tích lại</button>
+    ${STATE.role === 'admin' ? '<button class="btn btn-secondary" onclick="reAnalyzeWithNote()" style="border-color:var(--blue);color:var(--blue)">🔄 Phân tích lại</button>' : ''}
     <button class="btn btn-primary" onclick="closeModal();exportWeeklyReport()">📄 Xuất báo cáo</button>
   `)
 }
