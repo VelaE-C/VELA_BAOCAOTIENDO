@@ -31,9 +31,11 @@ async function exportWeeklyReport() {
   loading(true, 'Đang tạo PDF báo cáo tuần...')
   try {
     const tasks   = STATE.tasks
-    const leaf    = tasks.filter(t => !t.is_summary)
-    const done    = leaf.filter(t => (t.pct_complete||0) === 100)
-    const inProg  = leaf.filter(t => t.tt_start && (t.pct_complete||0) < 100)
+    const leaf     = tasks.filter(t => !t.is_summary)
+    const done     = leaf.filter(t => (t.pct_complete||0) === 100)
+    const inProg   = leaf.filter(t => t.tt_start && (t.pct_complete||0) < 100)
+    const late     = leaf.filter(t => t._delay > 0)
+    const validLate = late.filter(t => t._delay > 0 && t._delay < 500)
     const rootTask = tasks.find(t => t.outline_level === 1)
     const totalPct = rootTask ? (rootTask.display_pct||rootTask.pct_complete||0) : 0
     const today   = new Date().toLocaleDateString('vi-VN')
