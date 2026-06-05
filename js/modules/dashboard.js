@@ -26,6 +26,14 @@ function dashboard() {
     <div class="card-title">Nhân công tuần này</div>
     <div class="card-sub">Nguồn: Google Sheets VELA Quân số — Tab TongHop</div>
     <div id="dash-labor"></div>
+  </div>
+  <div class="card" id="dash-attendance-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div class="card-title" style="margin-bottom:0">Quân số BCH theo tuần</div>
+      <span style="font-size:11px;color:var(--gray4)" id="dash-attendance-week"></span>
+    </div>
+    <div class="card-sub">Nguồn: VELA ChamCong — Trung bình CN/ngày theo tuần</div>
+    <div id="dash-attendance-chart" style="min-height:180px"></div>
   </div>`
 }
 
@@ -183,5 +191,127 @@ async function loadLaborData() {
   } catch(e) {
     console.warn('Labor data load failed:', e.message)
     el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Không tải được dữ liệu nhân công. Kiểm tra quyền Google Sheets API.</span>`
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// QUÂN SỐ BCH — từ v_attendance_weekly (Supabase)
+// ═══════════════════════════════════════════════════════════
+async function loadAttendanceData() {
+  const el = document.getElementById('dash-attendance-chart')
+  const weekEl = document.getElementById('dash-attendance-week')
+  if (!el) return
+
+  el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Đang tải quân số...</span>'
+
+  try {
+    const proj = STATE.currentProject
+    const now = new Date()
+    const thisWeek = getISOWeek(now)
+    const thisYear = now.getFullYear()
+
+    // Lấy 8 tuần gần nhất của dự án hiện tại
+    const { data: rows, error } = await sb
+      .from('v_attendance_weekly')
+      .select('week_number,year,total_cn,total_bch,total_ketcau,total_hoanthien,total_mep,total_congnhat,avg_cn_per_day,project_id')
+      .eq('project_id', proj.id)
+      .order('year', { ascending: false })
+      .order('week_number', { ascending: false })
+      .limit(8)
+
+    if (error) throw error
+
+    if (!rows || !rows.length) {
+      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có dữ liệu quân số từ app ChamCong</span>'
+      return
+    }
+
+    // Đảo lại để hiển thị cũ → mới (trái → phải)
+    const data = [...rows].reverse()
+    const current = rows[0] // tuần mới nhất
+
+    if (weekEl) weekEl.textContent = `Tuần ${current.week_number}/${current.year}`
+
+    // Lưu vào STATE để AI dùng
+    STATE._attendanceData = { current, history: data }
+
+    // Vẽ chart SVG bar chart
+    const maxCN = Math.max(...data.map(d => d.total_cn || 0), 1)
+    const W = 600, H = 140, PAD = 40, BAR_AREA = W - PAD
+    const barW = Math.floor(BAR_AREA / data.length) - 6
+    const scaleH = (H - 40)
+
+    const bars = data.map((d, i) => {
+      const cn = d.total_cn || 0
+      const bch = d.total_bch || 0
+      const h = Math.max(2, Math.round((cn / maxCN) * scaleH))
+      const x = PAD + i * (BAR_AREA / data.length)
+      const y = H - 28 - h
+      const isThis = d.week_number === thisWeek && d.year === thisYear
+      const barColor = isThis ? '#2563EB' : '#93C5FD'
+
+      // Breakdown: kết cấu, hoàn thiện, MEP, công nhật
+      const kc = d.total_ketcau || 0
+      const ht = d.total_hoanthien || 0
+      const mep = d.total_mep || 0
+      const cnhat = d.total_congnhat || 0
+
+      const tooltip = `T${d.week_number}: ${cn} CN (KC:${kc} HT:${ht} MEP:${mep} CN:${cnhat}) | BCH:${bch}`
+
+      return `
+        <g>
+          <title>${tooltip}</title>
+          <rect x="${x}" y="${y}" width="${barW}" height="${h}"
+            fill="${barColor}" rx="3" opacity="${isThis ? 1 : 0.75}"/>
+          <text x="${x + barW/2}" y="${y - 4}" text-anchor="middle"
+            font-size="10" fill="var(--gray6)">${cn}</text>
+          <text x="${x + barW/2}" y="${H - 14}" text-anchor="middle"
+            font-size="9" fill="${isThis ? 'var(--blue)' : 'var(--gray4)'}"
+            font-weight="${isThis ? '600' : '400'}">T${d.week_number}</text>
+          ${isThis ? `<rect x="${x - 1}" y="${y - 1}" width="${barW + 2}" height="${h + 2}" fill="none" stroke="#2563EB" stroke-width="1.5" rx="3"/>` : ''}
+        </g>`
+    }).join('')
+
+    // Legend breakdown tuần hiện tại
+    const c = current
+    const breakdown = [
+      { label: 'Kết cấu', val: c.total_ketcau || 0, color: '#1D4ED8' },
+      { label: 'Hoàn thiện', val: c.total_hoanthien || 0, color: '#0D9488' },
+      { label: 'MEP', val: c.total_mep || 0, color: '#D97706' },
+      { label: 'Công nhật', val: c.total_congnhat || 0, color: '#9333EA' },
+    ]
+
+    const legendHtml = breakdown.map(b =>
+      `<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray6)">
+        <span style="width:10px;height:10px;border-radius:2px;background:${b.color};flex-shrink:0"></span>
+        ${b.label}: <strong>${b.val}</strong>
+      </div>`
+    ).join('')
+
+    el.innerHTML = `
+      <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
+        <line x1="${PAD}" y1="${H-28}" x2="${W}" y2="${H-28}"
+          stroke="var(--gray2)" stroke-width="0.5"/>
+        ${bars}
+        <text x="${PAD - 4}" y="${H - 28}" text-anchor="end"
+          font-size="9" fill="var(--gray4)">0</text>
+        <text x="${PAD - 4}" y="${H - 28 - scaleH}" text-anchor="end"
+          font-size="9" fill="var(--gray4)">${maxCN}</text>
+      </svg>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--gray2)">
+        <div style="font-size:12px;color:var(--gray6)">
+          Tuần này: <strong style="color:var(--navy)">${c.total_cn || 0} CN</strong>
+          · BCH: <strong>${c.total_bch || 0}</strong>
+          · TB/ngày: <strong style="color:var(--blue)">${c.avg_cn_per_day || 0}</strong>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+          ${legendHtml}
+        </div>
+      </div>`
+
+  } catch(e) {
+    console.warn('Attendance load failed:', e.message)
+    el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi tải quân số: ${e.message}</span>`
   }
 }
