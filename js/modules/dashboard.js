@@ -119,124 +119,181 @@ async function loadDashboard() {
 
 
 // ═══════════════════════════════════════════════════════════
-// QUÂN SỐ BCH — từ v_attendance_weekly (Supabase)
+// SỐ LƯỢNG CÔNG NHÂN THEO NGÀY — 7 ngày gần nhất
+// Source: v_attendance_daily_summary, filter theo cn_by_project
 // ═══════════════════════════════════════════════════════════
 async function loadAttendanceData() {
-  const el = document.getElementById('dash-attendance-chart')
+  const el     = document.getElementById('dash-attendance-chart')
   const weekEl = document.getElementById('dash-attendance-week')
   if (!el) return
 
   el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Đang tải quân số...</span>'
 
   try {
-    const proj = STATE.currentProject
-    const now = new Date()
-    const thisWeek = getISOWeek(now)
-    const thisYear = now.getFullYear()
+    const proj     = STATE.currentProject
+    const projCode = (proj.code || '').trim()  // VD: "VEGACITY 62CAN" hoặc "IEC 29CAN"
 
-    // Lấy 8 tuần gần nhất của dự án hiện tại
-    // Dùng project_code để tránh UUID mismatch giữa 2 app
-    const projCode = (proj.code || '').trim()
+    // Lấy 7 ngày gần nhất — toàn bộ, lọc theo cn_by_project phía client
     const { data: rows, error } = await sb
-      .from('v_attendance_weekly')
-      .select('week_number,year,total_cn,total_bch,total_ketcau,total_hoanthien,total_mep,total_congnhat,avg_cn_per_day,project_id,project_code')
-      .eq('project_code', projCode)
-      .order('year', { ascending: false })
-      .order('week_number', { ascending: false })
-      .limit(8)
+      .from('v_attendance_daily_summary')
+      .select('report_date,week_number,year,total_cn,total_bch,total_ketcau,total_hoanthien,total_mep,total_congnhat,total_khac,cn_by_project')
+      .order('report_date', { ascending: false })
+      .limit(30)  // lấy 30 ngày để đảm bảo đủ 7 ngày có data dù BCH bỏ ngày
 
     if (error) throw error
 
-    if (!rows || !rows.length) {
-      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có dữ liệu quân số từ app ChamCong</span>'
+    // Lọc theo dự án hiện tại từ cn_by_project JSON
+    // VD: {"VEGACITY 62CAN": 50, "IEC 29CAN": 70}
+    const filtered = (rows || [])
+      .filter(r => {
+        if (!r.cn_by_project) return false
+        const map = typeof r.cn_by_project === 'string'
+          ? JSON.parse(r.cn_by_project) : r.cn_by_project
+        return Object.keys(map).some(k => k.includes(projCode.split(' ')[0]))
+      })
+      .slice(0, 7)
+
+    if (!filtered.length) {
+      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có dữ liệu 7 ngày gần nhất cho dự án này</span>'
       return
     }
 
-    // Đảo lại để hiển thị cũ → mới (trái → phải)
-    const data = [...rows].reverse()
-    const current = rows[0] // tuần mới nhất
+    // Đảo lại: cũ → mới (trái → phải)
+    const data = [...filtered].reverse()
 
-    if (weekEl) weekEl.textContent = `Tuần ${current.week_number}/${current.year}`
+    // Lấy CN theo dự án từ cn_by_project
+    const getCN = (r) => {
+      if (!r.cn_by_project) return 0
+      const map = typeof r.cn_by_project === 'string'
+        ? JSON.parse(r.cn_by_project) : r.cn_by_project
+      const key = Object.keys(map).find(k => k.includes(projCode.split(' ')[0]))
+      return key ? (map[key] || 0) : 0
+    }
+
+    // Tính trung bình 7 ngày
+    const cnList  = data.map(getCN)
+    const avgCN7  = Math.round(cnList.reduce((s, v) => s + v, 0) / cnList.length)
+    const maxCN   = Math.max(...cnList, 1)
+    const today   = new Date().toISOString().slice(0, 10)
 
     // Lưu vào STATE để AI dùng
-    STATE._attendanceData = { current, history: data }
+    const currentWeek = data[data.length - 1]
+    STATE._attendanceData = {
+      current: {
+        ...currentWeek,
+        total_cn: getCN(currentWeek),
+        avg_cn_7day: avgCN7,
+      },
+      history: data.map(r => ({ ...r, cn_proj: getCN(r) })),
+      avgCN7,
+    }
 
-    // Vẽ chart SVG bar chart
-    const maxCN = Math.max(...data.map(d => d.total_cn || 0), 1)
-    const W = 600, H = 140, PAD = 40, BAR_AREA = W - PAD
-    const barW = Math.floor(BAR_AREA / data.length) - 6
-    const scaleH = (H - 40)
+    if (weekEl) weekEl.textContent = `TB 7 ngày: ${avgCN7} CN/ngày`
+
+    // Vẽ SVG bar chart
+    const W = 600, H = 160, PAD = 36, BAR_AREA = W - PAD - 10
+    const barW = Math.max(24, Math.floor(BAR_AREA / data.length) - 8)
+    const scaleH = H - 48
 
     const bars = data.map((d, i) => {
-      const cn = d.total_cn || 0
-      const bch = d.total_bch || 0
-      const h = Math.max(2, Math.round((cn / maxCN) * scaleH))
-      const x = PAD + i * (BAR_AREA / data.length)
-      const y = H - 28 - h
-      const isThis = d.week_number === thisWeek && d.year === thisYear
-      const barColor = isThis ? '#2563EB' : '#93C5FD'
+      const cn    = getCN(d)
+      const h     = Math.max(4, Math.round((cn / maxCN) * scaleH))
+      const x     = PAD + i * (BAR_AREA / data.length)
+      const y     = H - 32 - h
+      const isToday = d.report_date === today
+      const isAvg = Math.abs(cn - avgCN7) <= 2
 
-      // Breakdown: kết cấu, hoàn thiện, MEP, công nhật
-      const kc = d.total_ketcau || 0
-      const ht = d.total_hoanthien || 0
-      const mep = d.total_mep || 0
-      const cnhat = d.total_congnhat || 0
+      const color = isToday  ? '#1D4ED8'
+                  : cn > avgCN7 ? '#16A34A'
+                  : cn < avgCN7 * 0.8 ? '#DC2626'
+                  : '#60A5FA'
 
-      const tooltip = `T${d.week_number}: ${cn} CN (KC:${kc} HT:${ht} MEP:${mep} CN:${cnhat}) | BCH:${bch}`
+      // Format ngày dd/MM
+      const dt  = new Date(d.report_date)
+      const lbl = `${dt.getDate()}/${dt.getMonth()+1}`
+      const dow = ['CN','T2','T3','T4','T5','T6','T7'][dt.getDay()]
 
       return `
         <g>
-          <title>${tooltip}</title>
+          <title>${dow} ${lbl}: ${cn} CN${isToday?' (hôm nay)':''}</title>
           <rect x="${x}" y="${y}" width="${barW}" height="${h}"
-            fill="${barColor}" rx="3" opacity="${isThis ? 1 : 0.75}"/>
+            fill="${color}" rx="3" opacity="0.9"/>
           <text x="${x + barW/2}" y="${y - 4}" text-anchor="middle"
-            font-size="10" fill="var(--gray6)">${cn}</text>
-          <text x="${x + barW/2}" y="${H - 14}" text-anchor="middle"
-            font-size="9" fill="${isThis ? 'var(--blue)' : 'var(--gray4)'}"
-            font-weight="${isThis ? '600' : '400'}">T${d.week_number}</text>
-          ${isThis ? `<rect x="${x - 1}" y="${y - 1}" width="${barW + 2}" height="${h + 2}" fill="none" stroke="#2563EB" stroke-width="1.5" rx="3"/>` : ''}
+            font-size="11" fill="var(--gray7)" font-weight="500">${cn}</text>
+          <text x="${x + barW/2}" y="${H - 16}" text-anchor="middle"
+            font-size="9" fill="${isToday?'var(--blue)':'var(--gray5)'}"
+            font-weight="${isToday?'700':'400'}">${lbl}</text>
+          <text x="${x + barW/2}" y="${H - 6}" text-anchor="middle"
+            font-size="8" fill="var(--gray4)">${dow}</text>
         </g>`
     }).join('')
 
-    // Legend breakdown tuần hiện tại
-    const c = current
-    const breakdown = [
-      { label: 'Kết cấu', val: c.total_ketcau || 0, color: '#1D4ED8' },
-      { label: 'Hoàn thiện', val: c.total_hoanthien || 0, color: '#0D9488' },
-      { label: 'MEP', val: c.total_mep || 0, color: '#D97706' },
-      { label: 'Công nhật', val: c.total_congnhat || 0, color: '#9333EA' },
-    ]
-
-    const legendHtml = breakdown.map(b =>
-      `<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray6)">
-        <span style="width:10px;height:10px;border-radius:2px;background:${b.color};flex-shrink:0"></span>
-        ${b.label}: <strong>${b.val}</strong>
-      </div>`
-    ).join('')
+    // Đường trung bình
+    const avgY = H - 32 - Math.round((avgCN7 / maxCN) * scaleH)
+    const avgLine = `
+      <line x1="${PAD}" y1="${avgY}" x2="${W - 10}" y2="${avgY}"
+        stroke="#D97706" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"/>
+      <text x="${W - 8}" y="${avgY + 4}" font-size="9" fill="#D97706"
+        font-weight="600">TB</text>`
 
     el.innerHTML = `
-      <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
-        <line x1="${PAD}" y1="${H-28}" x2="${W}" y2="${H-28}"
+      <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible;margin-bottom:4px">
+        <line x1="${PAD}" y1="${H-32}" x2="${W-10}" y2="${H-32}"
           stroke="var(--gray2)" stroke-width="0.5"/>
+        <text x="${PAD-4}" y="${H-32}" text-anchor="end"
+          font-size="8" fill="var(--gray4)" dominant-baseline="middle">0</text>
+        <text x="${PAD-4}" y="${H-32-scaleH}" text-anchor="end"
+          font-size="8" fill="var(--gray4)" dominant-baseline="middle">${maxCN}</text>
+        ${avgLine}
         ${bars}
-        <text x="${PAD - 4}" y="${H - 28}" text-anchor="end"
-          font-size="9" fill="var(--gray4)">0</text>
-        <text x="${PAD - 4}" y="${H - 28 - scaleH}" text-anchor="end"
-          font-size="9" fill="var(--gray4)">${maxCN}</text>
       </svg>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--gray2)">
-        <div style="font-size:12px;color:var(--gray6)">
-          Tuần này: <strong style="color:var(--navy)">${c.total_cn || 0} CN</strong>
-          · BCH: <strong>${c.total_bch || 0}</strong>
-          · TB/ngày: <strong style="color:var(--blue)">${c.avg_cn_per_day || 0}</strong>
+
+      <div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:8px;border-top:1px solid var(--gray2);font-size:12px">
+        <div>TB 7 ngày: <strong style="color:var(--blue);font-size:14px">${avgCN7}</strong> CN/ngày</div>
+        <div style="color:var(--gray5)">—</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:3px">
+            <span style="width:10px;height:10px;background:#1D4ED8;border-radius:2px;display:inline-block"></span>
+            Hôm nay
+          </span>
+          <span style="display:flex;align-items:center;gap:3px">
+            <span style="width:10px;height:10px;background:#16A34A;border-radius:2px;display:inline-block"></span>
+            Trên TB
+          </span>
+          <span style="display:flex;align-items:center;gap:3px">
+            <span style="width:10px;height:10px;background:#DC2626;border-radius:2px;display:inline-block"></span>
+            Dưới TB 20%
+          </span>
+          <span style="display:flex;align-items:center;gap:3px">
+            <span style="border-top:1px dashed #D97706;width:16px;display:inline-block"></span>
+            Trung bình
+          </span>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
-          ${legendHtml}
-        </div>
+      </div>
+
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--gray5)">
+        ${(() => {
+          const last = data[data.length - 1]
+          if (!last) return ''
+          const map = typeof last.cn_by_project === 'string'
+            ? JSON.parse(last.cn_by_project) : (last.cn_by_project || {})
+          return [
+            {l:'Kết cấu', v: last.total_ketcau||0, c:'#1D4ED8'},
+            {l:'Hoàn thiện', v: last.total_hoanthien||0, c:'#0D9488'},
+            {l:'MEP', v: last.total_mep||0, c:'#D97706'},
+            {l:'Công nhật', v: last.total_congnhat||0, c:'#9333EA'},
+          ].map(b =>
+            `<span style="display:flex;align-items:center;gap:3px">
+              <span style="width:8px;height:8px;background:${b.c};border-radius:2px;display:inline-block"></span>
+              ${b.l}: <strong>${b.v}</strong>
+            </span>`
+          ).join('')
+        })()}
+        <span style="color:var(--gray4)">· BCH: <strong>${data[data.length-1]?.total_bch||0}</strong></span>
       </div>`
 
   } catch(e) {
     console.warn('Attendance load failed:', e.message)
-    el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi tải quân số: ${e.message}</span>`
+    el.innerHTML = `<span style="color:var(--red);font-size:13px">Lỗi: ${e.message}</span>`
   }
 }
