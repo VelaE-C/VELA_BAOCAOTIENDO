@@ -3441,18 +3441,6 @@ async function exportWeeklyReport() {
     const tasks   = STATE.tasks
     const leaf    = tasks.filter(t => !t.is_summary)
     const done    = leaf.filter(t => (t.pct_complete||0) === 100)
-    // ── Earned Value (Sản lượng thực) ─────────────────────────
-  const earnedValue = leaf.reduce(function(sum, t) {
-    const price = t.unit_price || 0
-    if (!price) return sum
-    if (t.unit && t.unit !== '%') {
-      return sum + (t.actual_quantity || 0) * price
-    } else {
-      return sum + (t.pct_complete || 0) / 100 * price
-    }
-  }, 0)
-
-  const validLate = leaf.filter(t => t._delay > 0 && t._delay < 365)
     const inProg  = leaf.filter(t => t.tt_start && (t.pct_complete||0) < 100)
     const rootTask = tasks.find(t => t.outline_level === 1)
     const totalPct = rootTask ? (rootTask.display_pct||rootTask.pct_complete||0) : 0
@@ -4765,6 +4753,17 @@ function buildProjSummary(proj, tasks, payments) {
   // Nếu HT% > 50% của TG% còn lại → đang cải thiện (up), ngược lại (dn)
   // Sẽ được override bởi dữ liệu thực từ ai_summaries nếu có
   const trend = gap > 20 ? 'dn' : gap > 10 ? 'dn' : gap < -5 ? 'up' : 'eq'
+
+  // ── Earned Value (Sản lượng thực) ─────────────────────────
+  const earnedValue = leaf.reduce(function(sum, t) {
+    const price = t.unit_price || 0
+    if (!price) return sum
+    if (t.unit && t.unit !== '%') {
+      return sum + (t.actual_quantity || 0) * price
+    } else {
+      return sum + (t.pct_complete || 0) / 100 * price
+    }
+  }, 0)
 
   // ── Payment summary ────────────────────────────────────────
   const contractValue = proj.contract_value || 0
