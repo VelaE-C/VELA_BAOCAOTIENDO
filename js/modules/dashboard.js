@@ -22,6 +22,14 @@ function dashboard() {
     <div class="card-sub">Chỉ hiển thị task cấp 2-3 (hạng mục tổng hợp)</div>
     <div id="dash-summary-table"></div>
   </div>
+  <div class="card" id="dash-photos-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div class="card-title" style="margin-bottom:0">📷 Ảnh thi công tuần này</div>
+      <span style="font-size:11px;color:var(--gray4)" id="dash-photos-count"></span>
+    </div>
+    <div class="card-sub">Tối đa 9 ảnh — tuần hiện tại</div>
+    <div id="dash-photos-grid"></div>
+  </div>
   <div class="card" id="dash-attendance-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <div class="card-title" style="margin-bottom:0">Số lượng công nhân theo ngày</div>
@@ -115,6 +123,8 @@ async function loadDashboard() {
 
   // Load attendance từ Supabase
   loadAttendanceData()
+  // Load ảnh tuần này
+  loadDashboardPhotos()
 }
 
 
@@ -295,5 +305,79 @@ async function loadAttendanceData() {
   } catch(e) {
     console.warn('Attendance load failed:', e.message)
     el.innerHTML = `<span style="color:var(--red);font-size:13px">Lỗi: ${e.message}</span>`
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ẢNH THI CÔNG TUẦN NÀY — từ task_photos
+// ═══════════════════════════════════════════════════════════
+async function loadDashboardPhotos() {
+  const el      = document.getElementById('dash-photos-grid')
+  const countEl = document.getElementById('dash-photos-count')
+  if (!el) return
+
+  el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Đang tải ảnh...</span>'
+
+  try {
+    const proj    = STATE.currentProject
+    const now     = new Date()
+    const week    = getISOWeek(now)
+    const year    = now.getFullYear()
+
+    const { data: photos, error } = await sb
+      .from('task_photos')
+      .select('id,photo_url,taken_at,uploaded_by,task_id,week_number,year')
+      .eq('project_id', proj.id)
+      .eq('week_number', week)
+      .eq('year', year)
+      .order('taken_at', { ascending: false })
+      .limit(9)
+
+    if (error) throw error
+
+    if (!photos || !photos.length) {
+      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có ảnh nào trong tuần này</span>'
+      if (countEl) countEl.textContent = '0 ảnh'
+      return
+    }
+
+    if (countEl) countEl.textContent = `Tuần ${week}/${year} · ${photos.length} ảnh`
+
+    // Tìm tên task tương ứng
+    const taskMap = {}
+    STATE.tasks.forEach(t => { taskMap[t.id] = t.name })
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
+        ${photos.map(p => {
+          const taskName = taskMap[p.task_id] || ''
+          const date = p.taken_at
+            ? new Date(p.taken_at).toLocaleDateString('vi-VN', {day:'2-digit',month:'2-digit'})
+            : ''
+          const uploader = (p.uploaded_by || '').split('@')[0]
+          return `
+            <div style="position:relative;border-radius:8px;overflow:hidden;background:var(--gray1);aspect-ratio:4/3;cursor:pointer"
+                 onclick="window.open('${p.photo_url}','_blank')">
+              <img src="${p.photo_url}"
+                   style="width:100%;height:100%;object-fit:cover;display:block"
+                   loading="lazy"
+                   onerror="this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;height:100%;color:var(--gray4);font-size:12px\'>Lỗi ảnh</div>'">
+              <div style="position:absolute;bottom:0;left:0;right:0;
+                background:linear-gradient(transparent,rgba(0,0,0,0.65));
+                padding:8px 6px 5px;color:white">
+                ${taskName ? `<div style="font-size:10px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${taskName}</div>` : ''}
+                <div style="font-size:9px;opacity:0.8">${date}${uploader ? ' · ' + uploader : ''}</div>
+              </div>
+            </div>`
+        }).join('')}
+      </div>
+      ${photos.length === 9 ? `
+        <div style="text-align:center;margin-top:8px;font-size:12px;color:var(--gray4)">
+          Hiển thị 9 ảnh gần nhất · <span style="color:var(--blue);cursor:pointer" onclick="navigate('photos')">Xem tất cả →</span>
+        </div>` : ''}
+    `
+  } catch(e) {
+    console.warn('Dashboard photos failed:', e.message)
+    el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi tải ảnh: ${e.message}</span>`
   }
 }
