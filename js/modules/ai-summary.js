@@ -154,25 +154,34 @@ ${lvl3SummaryClean || 'Không có dữ liệu'}
 
 ${(() => {
       if (!STATE._attendanceData) return ''
-      const c = STATE._attendanceData.current
-      const hist = STATE._attendanceData.history
-      const trend = hist.length >= 2
-        ? (hist[hist.length-1].total_cn - hist[hist.length-2].total_cn)
-        : 0
-      const trendStr = trend > 0 ? `(tăng +${trend} CN so với tuần trước)`
-                     : trend < 0 ? `(giảm ${Math.abs(trend)} CN so với tuần trước)`
-                     : '(ổn định so với tuần trước)'
-      const histRows = hist.slice(-4).map(h =>
-        `  Tuần ${h.week_number}: ${h.total_cn} CN (TB ${h.avg_cn_per_day}/ngày)`
-      ).join('\n')
-      return `QUÂN SỐ BCH TUẦN ${c.week_number}/${c.year}:
-- Tổng CN: ${c.total_cn} người ${trendStr}
-- Phân loại: Kết cấu ${c.total_ketcau} · Hoàn thiện ${c.total_hoanthien} · MEP ${c.total_mep} · Công nhật ${c.total_congnhat}
-- BCH (Cán bộ chỉ huy): ${c.total_bch} người
-- Trung bình CN/ngày: ${c.avg_cn_per_day}
-- Lịch sử 4 tuần gần nhất:
+      const c    = STATE._attendanceData.current
+      const hist = STATE._attendanceData.history || []
+      const avg7 = STATE._attendanceData.avgCN7 || 0
+
+      // Xu hướng: so sánh 3 ngày đầu vs 3 ngày cuối trong 7 ngày
+      const first3 = hist.slice(0,3).map(h => h.cn_proj||0)
+      const last3  = hist.slice(-3).map(h => h.cn_proj||0)
+      const avgFirst = first3.length ? Math.round(first3.reduce((s,v)=>s+v,0)/first3.length) : 0
+      const avgLast  = last3.length  ? Math.round(last3.reduce((s,v)=>s+v,0)/last3.length)  : 0
+      const trend = avgLast - avgFirst
+      const trendStr = trend > 5  ? `(xu hướng TĂNG +${trend} CN/ngày so với đầu tuần)`
+                     : trend < -5 ? `(xu hướng GIẢM ${Math.abs(trend)} CN/ngày so với đầu tuần)`
+                     : '(ổn định trong tuần)'
+
+      const histRows = hist.map(h => {
+        const dt = new Date(h.report_date)
+        const lbl = dt.toLocaleDateString('vi-VN', {weekday:'short', day:'2-digit', month:'2-digit'})
+        return `  ${lbl}: ${h.cn_proj||0} CN`
+      }).join('\n')
+
+      const lastDay = hist[hist.length-1] || {}
+      return `QUÂN SỐ CÔNG NHÂN 7 NGÀY GẦN NHẤT (dự án ${c.project_code||''}):
+- Trung bình 7 ngày: ${avg7} CN/ngày ${trendStr}
+- Ngày gần nhất: ${lastDay.cn_proj||0} CN · BCH: ${lastDay.total_bch||0}
+- Phân loại (ngày gần nhất): Kết cấu ${lastDay.total_ketcau||0} · Hoàn thiện ${lastDay.total_hoanthien||0} · MEP ${lastDay.total_mep||0} · Công nhật ${lastDay.total_congnhat||0}
+- Chi tiết 7 ngày:
 ${histRows}
-(Phân tích: quân số có đủ để bù đắp tiến độ chậm không? Nếu quân số thấp mà nhiều task đang chậm → cảnh báo rủi ro nhân lực)
+(Phân tích tương quan: so sánh TB ${avg7} CN/ngày với số lượng task đang chậm — nếu quân số thấp mà tiến độ đang trễ nhiều → cảnh báo rủi ro thiếu nhân lực; nếu quân số cao nhưng tiến độ vẫn chậm → vấn đề năng suất hoặc tổ chức)
 
 `
     })()}${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
