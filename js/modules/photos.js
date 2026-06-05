@@ -3,12 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 function photos() {
   return `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-    <h2 style="font-size:18px;font-weight:700">Ảnh hiện trường</h2>
-    <button class="btn btn-primary btn-sm" onclick="openGeneralPhotoModal()">
-      🚁 Upload ảnh tổng thể
-    </button>
-  </div>
+  <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Ảnh hiện trường</h2>
   <div class="card">
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
       <select class="form-input" id="photo-week-filter" style="width:160px" onchange="loadPhotos()">
@@ -25,6 +20,9 @@ function photos() {
           `<option value="${t.id}">${t.name.slice(0,40)}</option>`
         ).join('')}
       </select>
+      <button class="btn btn-primary btn-sm" onclick="openGeneralPhotoModal()" style="white-space:nowrap">
+        🚁 Upload ảnh tổng thể
+      </button>
     </div>
     <div id="photo-grid-main" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px"></div>
   </div>
