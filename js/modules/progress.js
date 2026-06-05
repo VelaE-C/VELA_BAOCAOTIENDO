@@ -14,7 +14,16 @@ async function exportWeeklyReport() {
     .order('created_at', { ascending: false }).limit(1)
   const aiSummary = aiData?.[0]?.summary_text || null
 
-  if (!aiSummary) {
+  // Lấy ảnh tuần này (tối đa 6 ảnh cho báo cáo PDF)
+  const { data: weekPhotos } = await sb.from('task_photos')
+    .select('photo_url,caption,taken_at,task_id,tasks(name)')
+    .eq('project_id', proj.id)
+    .eq('week_number', week)
+    .eq('year', year)
+    .order('taken_at', { ascending: false })
+    .limit(6)
+
+  if (false) {
     toast('Chưa có AI tóm tắt tuần này. Hãy bấm "🤖 AI Tóm tắt" trước.', 'error')
     return
   }
@@ -122,6 +131,45 @@ async function exportWeeklyReport() {
       return `<div style="font-size:10px;line-height:1.7;color:#1E293B;margin:2px 0">${clean}</div>`
     }).join('')
 
+    // Build photos HTML
+    let photosHtml = ''
+    if (weekPhotos?.length) {
+      const photoItems = weekPhotos.map(p => {
+        const label = !p.task_id
+          ? (p.caption || 'Ảnh tổng thể')
+          : (p.tasks?.name || p.caption || '')
+        const date = p.taken_at
+          ? new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
+          : ''
+        const isGeneral = !p.task_id
+        return `
+          <div style="border-radius:6px;overflow:hidden;border:0.5px solid #E2E8F0;background:white">
+            <img src="${p.photo_url}" crossorigin="anonymous"
+              style="width:100%;height:110px;object-fit:cover;display:block"
+              onerror="this.style.display='none'">
+            <div style="padding:4px 6px;background:${isGeneral?'#F0FDFA':'white'}">
+              <div style="font-size:8px;font-weight:500;color:${isGeneral?'#0D9488':'#334155'};
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${label}">
+                ${isGeneral?'🚁 ':''}${label.slice(0,35)}
+              </div>
+              <div style="font-size:7px;color:#94A3B8;margin-top:1px">${date}</div>
+            </div>
+          </div>`
+      }).join('')
+
+      photosHtml = `
+        <div style="margin-bottom:16px">
+          <div style="background:#1A2B4A;color:white;font-size:10px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
+            📷 ẢNH THI CÔNG TUẦN ${week}/${year} (${weekPhotos.length} ảnh)
+          </div>
+          <div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              ${photoItems}
+            </div>
+          </div>
+        </div>`
+    }
+
     // Build full HTML
     const barW = Math.max(2, totalPct)
     const barClr = totalPct >= 70 ? '#16A34A' : totalPct >= 40 ? '#D97706' : '#DC2626'
@@ -186,6 +234,9 @@ async function exportWeeklyReport() {
         ${aiHtml}
       </div>
     </div>
+
+    <!-- PHOTOS -->
+    ${photosHtml}
 
     <!-- TABLE -->
     <div style="margin-bottom:16px">
