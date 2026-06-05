@@ -22,14 +22,9 @@ function dashboard() {
     <div class="card-sub">Chỉ hiển thị task cấp 2-3 (hạng mục tổng hợp)</div>
     <div id="dash-summary-table"></div>
   </div>
-  <div class="card" id="dash-labor-card">
-    <div class="card-title">Nhân công tuần này</div>
-    <div class="card-sub">Nguồn: Google Sheets VELA Quân số — Tab TongHop</div>
-    <div id="dash-labor"></div>
-  </div>
   <div class="card" id="dash-attendance-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <div class="card-title" style="margin-bottom:0">Quân số BCH theo tuần</div>
+      <div class="card-title" style="margin-bottom:0">Số lượng công nhân theo ngày</div>
       <span style="font-size:11px;color:var(--gray4)" id="dash-attendance-week"></span>
     </div>
     <div class="card-sub">Nguồn: VELA ChamCong — Trung bình CN/ngày theo tuần</div>
@@ -118,80 +113,8 @@ async function loadDashboard() {
       </tbody>
     </table>`
 
-  // Load labor from Sheets
-  loadLaborData()
-}
-
-async function loadLaborData() {
-  const el = document.getElementById('dash-labor')
-  if (!el) return
-  el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Đang tải dữ liệu nhân công...</span>'
-
-  try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CFG.SHEETS_ID}/values/${CFG.SHEET_TAB}!A:E?key=${CFG.GOOGLE_KEY}`
-    const res = await fetch(url)
-    const json = await res.json()
-    const rows = (json.values || []).slice(1).filter(r => r[0]) // skip header
-
-    // Get current week
-    const now = new Date()
-    const thisWeek = getISOWeek(now)
-    const thisYear = now.getFullYear()
-
-    const weekRows = rows.filter(r => {
-      const d = new Date(r[0].split('/').reverse().join('-'))
-      return getISOWeek(d) === thisWeek && d.getFullYear() === thisYear
-    })
-
-    if (!weekRows.length) {
-      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có dữ liệu tuần này</span>'
-      return
-    }
-
-    const totalBCH = weekRows.reduce((s,r) => s + (parseInt(r[1])||0), 0)
-    const totalCN  = weekRows.reduce((s,r) => s + (parseInt(r[2])||0), 0)
-    const days     = weekRows.length
-
-    // Parse project detail from column E
-    const projMap = {}
-    weekRows.forEach(r => {
-      const detail = r[4] || ''
-      detail.split('|').forEach(part => {
-        const m = part.trim().match(/^(.+?):\s*(\d+)\s*CN/)
-        if (m) projMap[m[1].trim()] = (projMap[m[1].trim()]||0) + parseInt(m[2])
-      })
-    })
-
-    el.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
-        <div class="metric-card">
-          <div class="m-lbl">Tổng BCH cả tuần</div>
-          <div class="m-val" style="color:var(--navy)">${totalBCH}</div>
-          <div class="m-sub">${days} ngày có dữ liệu</div>
-        </div>
-        <div class="metric-card">
-          <div class="m-lbl">Tổng CN cả tuần</div>
-          <div class="m-val" style="color:var(--blue)">${totalCN}</div>
-          <div class="m-sub">Tuần ${thisWeek}/${thisYear}</div>
-        </div>
-        <div class="metric-card">
-          <div class="m-lbl">TB CN/ngày</div>
-          <div class="m-val" style="color:var(--teal)">${Math.round(totalCN/days)}</div>
-          <div class="m-sub">người/ngày</div>
-        </div>
-      </div>
-      <div style="font-size:12px;color:var(--gray5);margin-bottom:8px;font-weight:500">Chi tiết theo dự án:</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${Object.entries(projMap).sort((a,b)=>b[1]-a[1]).map(([proj,cn]) =>
-          `<div style="background:var(--gray1);border-radius:6px;padding:6px 12px;font-size:12px">
-            <strong>${proj}</strong>: ${cn} CN
-          </div>`
-        ).join('')}
-      </div>`
-  } catch(e) {
-    console.warn('Labor data load failed:', e.message)
-    el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Không tải được dữ liệu nhân công. Kiểm tra quyền Google Sheets API.</span>`
-  }
+  // Load attendance từ Supabase
+  loadAttendanceData()
 }
 
 
@@ -212,10 +135,12 @@ async function loadAttendanceData() {
     const thisYear = now.getFullYear()
 
     // Lấy 8 tuần gần nhất của dự án hiện tại
+    // Dùng project_code để tránh UUID mismatch giữa 2 app
+    const projCode = (proj.code || '').trim()
     const { data: rows, error } = await sb
       .from('v_attendance_weekly')
-      .select('week_number,year,total_cn,total_bch,total_ketcau,total_hoanthien,total_mep,total_congnhat,avg_cn_per_day,project_id')
-      .eq('project_id', proj.id)
+      .select('week_number,year,total_cn,total_bch,total_ketcau,total_hoanthien,total_mep,total_congnhat,avg_cn_per_day,project_id,project_code')
+      .eq('project_code', projCode)
       .order('year', { ascending: false })
       .order('week_number', { ascending: false })
       .limit(8)
