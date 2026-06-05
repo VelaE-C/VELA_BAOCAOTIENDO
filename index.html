@@ -123,19 +123,12 @@
 <!-- ══ TOAST ══ -->
 <div class="toast" id="toast"></div>
 
-<!-- ══ CORE JS (load trước — các module sau phụ thuộc vào đây) ══ -->
+<!-- ══ CORE JS — load theo thứ tự, không đổi ══ -->
 <script src="js/core/config.js"></script>
 <script src="js/core/utils.js"></script>
+<script src="js/core/auth.js"></script>
 
-<!-- ══ MODULES (load sau — mỗi tab 1 file) ══ -->
-<!-- Batch 3+ sẽ thêm dần vào đây: -->
-<!-- <script src="js/core/auth.js"></script> -->
-<!-- <script src="js/modules/dashboard.js"></script> -->
-<!-- <script src="js/modules/wbs.js"></script> -->
-<!-- <script src="js/modules/gantt.js"></script> -->
-<!-- ... -->
-
-<!-- ══ MAIN SCRIPT (tạm thời giữ nguyên từ file gốc) ══ -->
+<!-- ══ MODULES ══ -->
 <script src="js/main.js"></script>
 
 </body>
