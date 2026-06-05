@@ -1780,11 +1780,6 @@ async function uploadToSupabase(parsed) {
     // Reload
     const { data: projs } = await sb.from('projects').select('*').order('code')
 
-    // Load payment records cho tất cả projects
-    const { data: allPayments } = await sb.from('payment_records')
-      .select('*')
-      .in('project_id', (await sb.from('projects').select('id')).data?.map(p=>p.id) || [])
-      .order('received_date')
     STATE.projects = projs || []
     const sel = document.getElementById('proj-select')
     sel.innerHTML = STATE.projects.map(p =>
@@ -4689,11 +4684,22 @@ async function initPortfolio() {
       .in('week_number', [curWeek, prevWeek])
       .order('created_at', { ascending: false })
 
+    // Load payment records cho tất cả projects (đúng chỗ)
+    const projIds = projs.map(p => p.id)
+    let allPayments = []
+    if (projIds.length) {
+      const { data: pmtData } = await sb.from('payment_records')
+        .select('*')
+        .in('project_id', projIds)
+        .order('received_date')
+      allPayments = pmtData || []
+    }
+
     const portfolioData = projs.map((proj, idx) => {
       const raw = taskResults[idx].data || []
       const tasks = computeRollupPct(raw)
       computeRollupDelay(tasks)
-      const projPayments = (allPayments || []).filter(p => p.project_id === proj.id)
+      const projPayments = allPayments.filter(p => p.project_id === proj.id)
       const d = buildProjSummary(proj, tasks, projPayments)
 
       // Override trend từ ai_summaries thực tế nếu có
