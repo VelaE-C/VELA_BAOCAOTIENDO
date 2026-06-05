@@ -4,25 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VelaE&C — Theo dõi tiến độ</title>
-
-<!-- ── CDN Libraries ── -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-
-<!-- ── CSS ── -->
 <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
-
-<!-- ══ LOGIN ══════════════════════════════════════════════ -->
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">
       <img src="https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png"
            style="height:64px;width:auto;object-fit:contain;margin-bottom:12px"
-           onerror="this.style.display='none'"
-           alt="Vela E&C">
+           onerror="this.style.display='none'" alt="Vela E&C">
       <h1 style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:4px">VelaE&C</h1>
       <p style="font-size:13px;color:var(--gray4);margin-bottom:2px">Hệ thống theo dõi tiến độ thi công</p>
       <p style="font-size:11px;color:var(--gray3)">Phát hành bởi: <strong style="color:var(--gray5)">Lê Trần Anh Toàn</strong> · Vela E&C</p>
@@ -36,21 +29,15 @@
       <label class="form-label">Mật khẩu</label>
       <input class="form-input" id="login-pw" type="password" placeholder="••••••••">
     </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px" id="btn-login">
-      Đăng nhập
-    </button>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px" id="btn-login">Đăng nhập</button>
   </div>
 </div>
-
-<!-- ══ MAIN APP ════════════════════════════════════════════ -->
 <div id="app" style="display:none">
   <div class="topbar">
     <div class="topbar-left">
       <div class="topbar-logo" style="display:flex;align-items:center;gap:8px">
         <img src="https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png"
-             style="height:32px;width:auto;object-fit:contain"
-             onerror="this.style.display='none'"
-             alt="Vela E&C Logo">
+             style="height:32px;width:auto;object-fit:contain" onerror="this.style.display='none'" alt="Vela E&C Logo">
         <span style="font-size:15px;font-weight:700;letter-spacing:-.3px">Vela<span style="color:#60A5FA">E&C</span></span>
       </div>
       <select id="proj-select" class="topbar-proj"></select>
@@ -58,51 +45,27 @@
     <div class="topbar-right">
       <span class="topbar-user" id="user-email"></span>
       <button id="btn-delete-proj" onclick="confirmDeleteProject()"
-        style="display:none;font-size:12px;padding:5px 10px;background:rgba(220,38,38,.2);border:1px solid rgba(220,38,38,.4);color:#FCA5A5;border-radius:6px;cursor:pointer"
-        title="Xóa dự án này">🗑️ Xóa dự án</button>
+        style="display:none;font-size:12px;padding:5px 10px;background:rgba(220,38,38,.2);border:1px solid rgba(220,38,38,.4);color:#FCA5A5;border-radius:6px;cursor:pointer">🗑️ Xóa dự án</button>
       <button class="btn-logout" id="btn-logout">Đăng xuất</button>
     </div>
   </div>
-
   <div class="main">
     <div class="sidebar">
       <div class="sidebar-section">Tổng quan</div>
-      <div class="sidebar-item active" data-page="dashboard">
-        <span class="si-icon">📊</span> Dashboard TGD
-      </div>
-      <div class="sidebar-item" data-page="wbs">
-        <span class="si-icon">📋</span> WBS / Tiến độ
-      </div>
-
+      <div class="sidebar-item active" data-page="dashboard"><span class="si-icon">📊</span> Dashboard TGD</div>
+      <div class="sidebar-item" data-page="wbs"><span class="si-icon">📋</span> WBS / Tiến độ</div>
       <div class="sidebar-section">Quản lý</div>
-      <div class="sidebar-item" data-page="gantt">
-        <span class="si-icon">📊</span> Gantt View
-      </div>
-      <div class="sidebar-item" data-page="photos">
-        <span class="si-icon">📷</span> Ảnh hiện trường
-      </div>
-      <div class="sidebar-item" data-page="compare">
-        <span class="si-icon">🔄</span> So sánh tuần
-      </div>
-      <div class="sidebar-item" data-page="import">
-        <span class="si-icon">📥</span> Import MS Project
-      </div>
-      <div class="sidebar-item" data-page="payment" id="sidebar-payment" style="display:none">
-        <span class="si-icon">💰</span> Thanh toán
-      </div>
-      <div class="sidebar-item" data-page="users" id="sidebar-users" style="display:none">
-        <span class="si-icon">👥</span> Quản lý User
-      </div>
-      <div class="sidebar-item" data-page="portfolio" id="sidebar-portfolio" style="display:none">
-        <span class="si-icon">📊</span> Portfolio BGĐ
-      </div>
+      <div class="sidebar-item" data-page="gantt"><span class="si-icon">📊</span> Gantt View</div>
+      <div class="sidebar-item" data-page="photos"><span class="si-icon">📷</span> Ảnh hiện trường</div>
+      <div class="sidebar-item" data-page="compare"><span class="si-icon">🔄</span> So sánh tuần</div>
+      <div class="sidebar-item" data-page="import"><span class="si-icon">📥</span> Import MS Project</div>
+      <div class="sidebar-item" data-page="payment" id="sidebar-payment" style="display:none"><span class="si-icon">💰</span> Thanh toán</div>
+      <div class="sidebar-item" data-page="users" id="sidebar-users" style="display:none"><span class="si-icon">👥</span> Quản lý User</div>
+      <div class="sidebar-item" data-page="portfolio" id="sidebar-portfolio" style="display:none"><span class="si-icon">📊</span> Portfolio BGĐ</div>
     </div>
-
     <div class="content" id="main-content"></div>
   </div>
 </div>
-
-<!-- ══ MODAL ══ -->
 <div class="modal-overlay" id="modal" style="display:none">
   <div class="modal">
     <div class="modal-head">
@@ -113,34 +76,24 @@
     <div class="modal-foot" id="modal-foot"></div>
   </div>
 </div>
-
-<!-- ══ LOADING ══ -->
 <div class="loading-overlay" id="loading" style="display:none">
   <div class="spinner"></div>
   <div id="loading-msg">Đang xử lý...</div>
 </div>
-
-<!-- ══ TOAST ══ -->
 <div class="toast" id="toast"></div>
 
-<!-- ══ CORE JS ══ -->
+<!-- CORE -->
 <script src="js/core/config.js"></script>
 <script src="js/core/utils.js"></script>
 <script src="js/core/auth.js"></script>
-
-<!-- ══ MODULES ══ -->
+<!-- MODULES -->
 <script src="js/modules/dashboard.js"></script>
 <script src="js/modules/photos.js"></script>
 <script src="js/modules/compare.js"></script>
 <script src="js/modules/export-pdf.js"></script>
 <script src="js/modules/import.js"></script>
 <script src="js/modules/ai-summary.js"></script>
-
-<!-- ══ MAIN (còn lại: wbs, taskCRUD, users, gantt, progress, portfolio, fmtMoney) ══ -->
+<!-- MAIN (gộp cả payment) -->
 <script src="js/main.js"></script>
-
-<!-- ══ PAYMENT (load sau main.js vì dùng fmtMoney từ main.js) ══ -->
-<script src="js/modules/payment.js"></script>
-
 </body>
 </html>
