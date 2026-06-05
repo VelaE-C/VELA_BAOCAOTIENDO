@@ -152,7 +152,30 @@ ${lateWithNote || 'Không có'}
 TIẾN ĐỘ CHI TIẾT THEO HẠNG MỤC (level 3):
 ${lvl3SummaryClean || 'Không có dữ liệu'}
 
-${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
+${(() => {
+      if (!STATE._attendanceData) return ''
+      const c = STATE._attendanceData.current
+      const hist = STATE._attendanceData.history
+      const trend = hist.length >= 2
+        ? (hist[hist.length-1].total_cn - hist[hist.length-2].total_cn)
+        : 0
+      const trendStr = trend > 0 ? `(tăng +${trend} CN so với tuần trước)`
+                     : trend < 0 ? `(giảm ${Math.abs(trend)} CN so với tuần trước)`
+                     : '(ổn định so với tuần trước)'
+      const histRows = hist.slice(-4).map(h =>
+        `  Tuần ${h.week_number}: ${h.total_cn} CN (TB ${h.avg_cn_per_day}/ngày)`
+      ).join('\n')
+      return `QUÂN SỐ BCH TUẦN ${c.week_number}/${c.year}:
+- Tổng CN: ${c.total_cn} người ${trendStr}
+- Phân loại: Kết cấu ${c.total_ketcau} · Hoàn thiện ${c.total_hoanthien} · MEP ${c.total_mep} · Công nhật ${c.total_congnhat}
+- BCH (Cán bộ chỉ huy): ${c.total_bch} người
+- Trung bình CN/ngày: ${c.avg_cn_per_day}
+- Lịch sử 4 tuần gần nhất:
+${histRows}
+(Phân tích: quân số có đủ để bù đắp tiến độ chậm không? Nếu quân số thấp mà nhiều task đang chậm → cảnh báo rủi ro nhân lực)
+
+`
+    })()}${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
 LƯU Ý QUAN TRỌNG:
 - Chỉ đánh giá dựa trên dữ liệu được cung cấp ở trên
 - Không suy diễn hoặc phóng đại số liệu
@@ -172,6 +195,9 @@ Dự báo dựa trên tốc độ hiện tại. Cảnh báo nếu có nguy cơ v
 
 ## 4. KHUYẾN NGHỊ
 2-3 hành động CỤ THỂ, có thể thực hiện ngay trong tuần tới. Ưu tiên theo mức độ tác động.
+
+## 5. ĐÁNH GIÁ NHÂN LỰC
+Dựa trên dữ liệu quân số: quân số hiện tại có đáp ứng được yêu cầu thi công không? Nếu thiếu nhân lực ở gói nào, đề xuất điều chuyển cụ thể.
 
 Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Dùng **bold** cho tên công tác và số liệu quan trọng.`
 
