@@ -168,21 +168,13 @@ ${(() => {
                      : trend < -5 ? `(xu hướng GIẢM ${Math.abs(trend)} CN/ngày so với đầu tuần)`
                      : '(ổn định trong tuần)'
 
-      const histRows = hist.map(h => {
-        const dt = new Date(h.report_date)
-        const lbl = dt.toLocaleDateString('vi-VN', {weekday:'short', day:'2-digit', month:'2-digit'})
-        return `  ${lbl}: ${h.cn_proj||0} CN`
-      }).join('\n')
-
       const lastDay = hist[hist.length-1] || {}
-      return `QUÂN SỐ CÔNG NHÂN 7 NGÀY GẦN NHẤT (dự án ${c.project_code||''}):
-- Trung bình 7 ngày: ${avg7} CN/ngày ${trendStr}
+      const minCN = Math.min(...hist.map(h=>h.cn_proj||0))
+      const maxCN = Math.max(...hist.map(h=>h.cn_proj||0))
+      return `QUÂN SỐ 7 NGÀY GẦN NHẤT:
+- TB: ${avg7} CN/ngày ${trendStr} | Min: ${minCN} | Max: ${maxCN}
 - Ngày gần nhất: ${lastDay.cn_proj||0} CN · BCH: ${lastDay.total_bch||0}
-- Phân loại (ngày gần nhất): Kết cấu ${lastDay.total_ketcau||0} · Hoàn thiện ${lastDay.total_hoanthien||0} · MEP ${lastDay.total_mep||0} · Công nhật ${lastDay.total_congnhat||0}
-- Chi tiết 7 ngày:
-${histRows}
-(Phân tích tương quan: so sánh TB ${avg7} CN/ngày với số lượng task đang chậm — nếu quân số thấp mà tiến độ đang trễ nhiều → cảnh báo rủi ro thiếu nhân lực; nếu quân số cao nhưng tiến độ vẫn chậm → vấn đề năng suất hoặc tổ chức)
-
+- Phân loại: KC ${lastDay.total_ketcau||0} · HT ${lastDay.total_hoanthien||0} · MEP ${lastDay.total_mep||0} · CN ${lastDay.total_congnhat||0}
 `
     })()}${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
 LƯU Ý QUAN TRỌNG:
@@ -240,7 +232,8 @@ Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Dùng **
         prompt,
         project_id:   proj.id,
         project_name: proj.name,
-        stats:        statsPayload
+        stats:        statsPayload,
+        max_tokens:   4096  // tăng để tránh bị cắt giữa chừng
       })
     })
 
