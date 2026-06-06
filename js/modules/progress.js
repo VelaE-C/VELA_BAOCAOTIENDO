@@ -21,7 +21,7 @@ async function exportWeeklyReport() {
     .eq('week_number', week)
     .eq('year', year)
     .order('taken_at', { ascending: false })
-    .limit(6)
+    .limit(9)
 
   if (false) {
     toast('Chưa có AI tóm tắt tuần này. Hãy bấm "🤖 AI Tóm tắt" trước.', 'error')
@@ -146,9 +146,11 @@ async function exportWeeklyReport() {
         const isGeneral = !p.task_id
         return `
           <div style="border-radius:6px;overflow:hidden;border:0.5px solid #E2E8F0;background:white">
-            <img src="${p.photo_url}" crossorigin="anonymous"
-              style="width:100%;height:110px;object-fit:cover;display:block"
-              onerror="this.style.display='none'">
+            <div style="width:100%;padding-top:66%;position:relative;overflow:hidden;background:#E2E8F0">
+              <img src="${p.photo_url}" crossorigin="anonymous"
+                style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block"
+                onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;height:100%;color:#94A3B8;font-size:11px&quot;>Lỗi ảnh</div>'">
+            </div>
             <div style="padding:4px 6px;background:${isGeneral?'#F0FDFA':'white'}">
               <div style="font-size:11px;font-weight:500;color:${isGeneral?'#0D9488':'#334155'};
                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${label}">
@@ -359,7 +361,7 @@ async function exportWeeklyReport() {
     }
 
     const canvas = await html2canvas(container.querySelector('#pdf-content'), {
-      scale: 2,
+      scale: 3,
       useCORS: true,
       allowTaint: false,
       backgroundColor: '#ffffff',
@@ -373,7 +375,7 @@ async function exportWeeklyReport() {
     const pdfH = Math.round(canvas.height / canvas.width * pdfW)
 
     // Xuất 1 trang liên tục — không cắt trang, đọc trên mobile/màn hình
-    const imgData = canvas.toDataURL('image/jpeg', 0.93)
+    const imgData = canvas.toDataURL('image/jpeg', 0.97)
     const pdf = new jsPDF({ unit: 'mm', format: [pdfW, pdfH], orientation: 'portrait' })
     pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH)
     const fn = 'BC-TD_' + proj.code.replace(/[^a-zA-Z0-9]/g, '_') + '_Tuan' + week + '_' + year + '.pdf'
