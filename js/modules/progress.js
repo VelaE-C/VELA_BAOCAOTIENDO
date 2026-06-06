@@ -57,11 +57,11 @@ async function exportWeeklyReport() {
       const khEnd   = t.kh_finish ? t.kh_finish.slice(5).replace('-','/') : '--'
       const pctColor = pct === 100 ? '#16A34A' : isLate ? '#DC2626' : '#1E293B'
       return `<tr style="background:${rowBg};border-bottom:0.5px solid #E2E8F0">
-        <td style="padding:4px 6px;padding-left:${indent+6}px;font-weight:${fw};font-size:10px;max-width:220px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${t.name}</td>
-        <td style="padding:4px 6px;font-size:9px;color:#64748B;text-align:center">${khStart}</td>
-        <td style="padding:4px 6px;font-size:9px;color:#64748B;text-align:center">${khEnd}</td>
-        <td style="padding:4px 6px;font-size:10px;font-weight:600;color:${pctColor};text-align:center">${pct}%</td>
-        <td style="padding:4px 6px;font-size:9px;text-align:center">${statusStr}</td>
+        <td style="padding:4px 6px;padding-left:${indent+6}px;font-weight:${fw};font-size:14px;max-width:220px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${t.name}</td>
+        <td style="padding:4px 6px;font-size:12px;color:#64748B;text-align:center">${khStart}</td>
+        <td style="padding:4px 6px;font-size:12px;color:#64748B;text-align:center">${khEnd}</td>
+        <td style="padding:4px 6px;font-size:14px;font-weight:600;color:${pctColor};text-align:center">${pct}%</td>
+        <td style="padding:4px 6px;font-size:12px;text-align:center">${statusStr}</td>
       </tr>`
     }).join('')
 
@@ -77,11 +77,11 @@ async function exportWeeklyReport() {
       let qc = new Date(tl.start.getFullYear(), Math.floor(tl.start.getMonth()/3)*3, 1)
       while (qc <= tl.end) {
         const pct2 = Math.max(0, Math.min(98, Math.round((qc - tl.start) / rangeMs * 100)))
-        quarters.push(`<span style="position:absolute;left:${pct2}%;font-size:8px;color:rgba(255,255,255,0.8);white-space:nowrap">Q${Math.floor(qc.getMonth()/3)+1}/${qc.getFullYear()}</span>`)
+        quarters.push(`<span style="position:absolute;left:${pct2}%;font-size:11px;color:rgba(255,255,255,0.8);white-space:nowrap">Q${Math.floor(qc.getMonth()/3)+1}/${qc.getFullYear()}</span>`)
         qc = new Date(qc.getFullYear(), qc.getMonth()+3, 1)
       }
       ganttHtml = `
-        <div style="display:flex;align-items:center;background:#1A2B4A;color:white;font-size:9px;padding:5px 8px;border-radius:4px 4px 0 0;position:relative;height:20px">
+        <div style="display:flex;align-items:center;background:#1A2B4A;color:white;font-size:12px;padding:5px 8px;border-radius:4px 4px 0 0;position:relative;height:20px">
           <div style="width:180px;flex-shrink:0;font-weight:600">Hạng mục</div>
           <div style="flex:1;position:relative">${quarters.join('')}
             <div style="position:absolute;top:-4px;bottom:-4px;left:${nowPct}%;width:1.5px;background:#F97316;z-index:2"></div>
@@ -117,7 +117,7 @@ async function exportWeeklyReport() {
             ${ttBar}
             <div style="position:absolute;top:0;bottom:0;left:${nowPct}%;width:1.5px;background:#F97316;z-index:2"></div>
           </div>
-          <div style="width:70px;font-size:9px;font-weight:600;color:${dlyClr};text-align:center">${dlyTxt}</div>
+          <div style="width:70px;font-size:12px;font-weight:600;color:${dlyClr};text-align:center">${dlyTxt}</div>
         </div>`
       })
     }
@@ -128,9 +128,9 @@ async function exportWeeklyReport() {
       const clean = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').trim()
       if (line.startsWith('## ') || line.startsWith('# ')) {
         const heading = clean.replace(/^#+\s*/, '')
-        return `<div style="margin:12px 0 6px;padding:5px 10px;background:#EFF6FF;border-left:3px solid #2563EB;border-radius:0 4px 4px 0;font-weight:700;font-size:11px;color:#1E3A8A">${heading}</div>`
+        return `<div style="margin:12px 0 6px;padding:5px 10px;background:#EFF6FF;border-left:3px solid #2563EB;border-radius:0 4px 4px 0;font-weight:700;font-size:15px;color:#1E3A8A">${heading}</div>`
       }
-      return `<div style="font-size:10px;line-height:1.7;color:#1E293B;margin:2px 0">${clean}</div>`
+      return `<div style="font-size:14px;line-height:1.7;color:#1E293B;margin:2px 0">${clean}</div>`
     }).join('')
 
     // Build photos HTML
@@ -150,18 +150,18 @@ async function exportWeeklyReport() {
               style="width:100%;height:110px;object-fit:cover;display:block"
               onerror="this.style.display='none'">
             <div style="padding:4px 6px;background:${isGeneral?'#F0FDFA':'white'}">
-              <div style="font-size:8px;font-weight:500;color:${isGeneral?'#0D9488':'#334155'};
+              <div style="font-size:11px;font-weight:500;color:${isGeneral?'#0D9488':'#334155'};
                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${label}">
                 ${isGeneral?'🚁 ':''}${label.slice(0,35)}
               </div>
-              <div style="font-size:7px;color:#94A3B8;margin-top:1px">${date}</div>
+              <div style="font-size:10px;color:#94A3B8;margin-top:1px">${date}</div>
             </div>
           </div>`
       }).join('')
 
       photosHtml = `
         <div style="margin-bottom:16px">
-          <div style="background:#1A2B4A;color:white;font-size:10px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
+          <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
             📷 ẢNH THI CÔNG TUẦN ${week}/${year} (${weekPhotos.length} ảnh)
           </div>
           <div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA">
@@ -179,22 +179,22 @@ async function exportWeeklyReport() {
 <html><head><meta charset="UTF-8">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Segoe UI", Arial, sans-serif; }
-  body { background: white; width: 794px; }
+  body { background: white; width: 900px; }
 </style>
 </head><body>
-<div id="pdf-content" style="width:794px;background:white;padding:0">
+<div id="pdf-content" style="width:900px;background:white;padding:0">
   <!-- HEADER -->
   <div style="background:#1A2B4A;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
     <div style="display:flex;align-items:center;gap:12px">
       <img src="${LOGO_URL}" style="height:44px;width:auto" crossorigin="anonymous" onerror="this.style.display='none'">
       <div>
-        <div style="color:#F97316;font-size:9px;letter-spacing:0.08em;margin-top:2px">PHÒNG KTTC — VELAE&C</div>
+        <div style="color:#F97316;font-size:12px;letter-spacing:0.08em;margin-top:2px">PHÒNG KTTC — VELAE&C</div>
       </div>
     </div>
     <div style="text-align:right">
-      <div style="color:white;font-size:15px;font-weight:700">BÁO CÁO TIẾN ĐỘ THI CÔNG</div>
-      <div style="color:rgba(255,255,255,0.8);font-size:10px;margin-top:3px">${proj.name}</div>
-      <div style="color:rgba(255,255,255,0.65);font-size:9px;margin-top:2px">Tuần ${week}/${year} &nbsp;|&nbsp; Ngày lập: ${today}</div>
+      <div style="color:white;font-size:20px;font-weight:700">BÁO CÁO TIẾN ĐỘ THI CÔNG</div>
+      <div style="color:rgba(255,255,255,0.8);font-size:14px;margin-top:3px">${proj.name}</div>
+      <div style="color:rgba(255,255,255,0.65);font-size:12px;margin-top:2px">Tuần ${week}/${year} &nbsp;|&nbsp; Ngày lập: ${today}</div>
     </div>
   </div>
 
@@ -202,26 +202,26 @@ async function exportWeeklyReport() {
     <!-- METRICS -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
       <div style="background:#2563EB;border-radius:8px;padding:10px;text-align:center;color:white">
-        <div style="font-size:22px;font-weight:700">${leaf.length}</div>
-        <div style="font-size:9px;opacity:0.9;margin-top:2px">Tổng công tác</div>
+        <div style="font-size:32px;font-weight:700">${leaf.length}</div>
+        <div style="font-size:12px;opacity:0.9;margin-top:2px">Tổng công tác</div>
       </div>
       <div style="background:#16A34A;border-radius:8px;padding:10px;text-align:center;color:white">
-        <div style="font-size:22px;font-weight:700">${done.length}</div>
-        <div style="font-size:9px;opacity:0.9;margin-top:2px">Hoàn thành</div>
+        <div style="font-size:32px;font-weight:700">${done.length}</div>
+        <div style="font-size:12px;opacity:0.9;margin-top:2px">Hoàn thành</div>
       </div>
       <div style="background:#D97706;border-radius:8px;padding:10px;text-align:center;color:white">
-        <div style="font-size:22px;font-weight:700">${inProg.length}</div>
-        <div style="font-size:9px;opacity:0.9;margin-top:2px">Đang thi công</div>
+        <div style="font-size:32px;font-weight:700">${inProg.length}</div>
+        <div style="font-size:12px;opacity:0.9;margin-top:2px">Đang thi công</div>
       </div>
       <div style="background:#DC2626;border-radius:8px;padding:10px;text-align:center;color:white">
-        <div style="font-size:22px;font-weight:700">${validLate.length}</div>
-        <div style="font-size:9px;opacity:0.9;margin-top:2px">Chậm tiến độ</div>
+        <div style="font-size:32px;font-weight:700">${validLate.length}</div>
+        <div style="font-size:12px;opacity:0.9;margin-top:2px">Chậm tiến độ</div>
       </div>
     </div>
 
     <!-- PROGRESS BAR -->
     <div style="margin-bottom:14px">
-      <div style="font-size:10px;font-weight:700;color:#1A2B4A;margin-bottom:5px">TIẾN ĐỘ TỔNG THỂ: ${totalPct}%</div>
+      <div style="font-size:14px;font-weight:700;color:#1A2B4A;margin-bottom:5px">TIẾN ĐỘ TỔNG THỂ: ${totalPct}%</div>
       <div style="background:#E2E8F0;border-radius:99px;height:8px;overflow:hidden">
         <div style="background:${barClr};width:${barW}%;height:100%;border-radius:99px"></div>
       </div>
@@ -229,7 +229,7 @@ async function exportWeeklyReport() {
 
     <!-- AI SUMMARY -->
     <div style="margin-bottom:16px">
-      <div style="background:#1A2B4A;color:white;font-size:10px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;letter-spacing:0.04em">
+      <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;letter-spacing:0.04em">
         🤖 PHÂN TÍCH AI — TUẦN ${week}/${year}
       </div>
       <div style="border:0.5px solid #E2E8F0;border-top:none;padding:12px;border-radius:0 0 4px 4px;background:#FAFAFA">
@@ -242,17 +242,17 @@ async function exportWeeklyReport() {
 
     <!-- TABLE -->
     <div style="margin-bottom:16px">
-      <div style="background:#1A2B4A;color:white;font-size:10px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
+      <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
         📋 TIẾN ĐỘ THEO HẠNG MỤC
       </div>
       <table style="width:100%;border-collapse:collapse;border:0.5px solid #E2E8F0">
         <thead>
           <tr style="background:#1E3A5F;color:white">
-            <th style="padding:5px 6px;font-size:9px;text-align:left;font-weight:600">Hạng mục / Công tác</th>
-            <th style="padding:5px 6px;font-size:9px;text-align:center;width:46px;font-weight:600">KH BD</th>
-            <th style="padding:5px 6px;font-size:9px;text-align:center;width:46px;font-weight:600">KH KT</th>
-            <th style="padding:5px 6px;font-size:9px;text-align:center;width:40px;font-weight:600">% HT</th>
-            <th style="padding:5px 6px;font-size:9px;text-align:center;width:80px;font-weight:600">Trạng thái</th>
+            <th style="padding:5px 6px;font-size:12px;text-align:left;font-weight:600">Hạng mục / Công tác</th>
+            <th style="padding:5px 6px;font-size:12px;text-align:center;width:46px;font-weight:600">KH BD</th>
+            <th style="padding:5px 6px;font-size:12px;text-align:center;width:46px;font-weight:600">KH KT</th>
+            <th style="padding:5px 6px;font-size:12px;text-align:center;width:40px;font-weight:600">% HT</th>
+            <th style="padding:5px 6px;font-size:12px;text-align:center;width:80px;font-weight:600">Trạng thái</th>
           </tr>
         </thead>
         <tbody>${tableRows}</tbody>
@@ -261,12 +261,12 @@ async function exportWeeklyReport() {
 
     <!-- GANTT -->
     <div>
-      <div style="background:#1A2B4A;color:white;font-size:10px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
+      <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
         📅 SƠ ĐỒ GANTT TỔNG QUAN
       </div>
       <div style="border:0.5px solid #E2E8F0;border-top:none;border-radius:0 0 4px 4px;overflow:hidden">
         ${ganttHtml}
-        <div style="padding:4px 8px;background:#F8FAFC;font-size:8px;color:#64748B;display:flex;gap:16px">
+        <div style="padding:4px 8px;background:#F8FAFC;font-size:11px;color:#64748B;display:flex;gap:16px">
           <span><span style="display:inline-block;width:12px;height:6px;background:#93C5FD;border-radius:2px;vertical-align:middle;margin-right:3px"></span>KH</span>
           <span><span style="display:inline-block;width:12px;height:6px;background:#86EFAC;border-radius:2px;vertical-align:middle;margin-right:3px"></span>TT đúng</span>
           <span><span style="display:inline-block;width:12px;height:6px;background:#FCA5A5;border-radius:2px;vertical-align:middle;margin-right:3px"></span>TT trễ</span>
@@ -278,15 +278,15 @@ async function exportWeeklyReport() {
 
   <!-- FOOTER -->
   <div style="background:#F1F5F9;border-top:1px solid #E2E8F0;padding:8px 24px;display:flex;justify-content:space-between;align-items:center">
-    <span style="font-size:8px;color:#64748B">VelaE&C — Hệ thống theo dõi tiến độ thi công</span>
-    <span style="font-size:8px;color:#64748B">Phát hành: Lê Trần Anh Toàn — 0978635450</span>
+    <span style="font-size:11px;color:#64748B">VelaE&C — Hệ thống theo dõi tiến độ thi công</span>
+    <span style="font-size:11px;color:#64748B">Phát hành: Lê Trần Anh Toàn — 0978635450</span>
   </div>
 </div>
 </body></html>`
 
     // Render HTML → canvas → PDF using html2canvas
     const container = document.createElement('div')
-    container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;z-index:-1'
+    container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:900px;z-index:-1'
     container.innerHTML = htmlContent
     document.body.appendChild(container)
 
@@ -304,57 +304,21 @@ async function exportWeeklyReport() {
       useCORS: true,
       allowTaint: false,
       backgroundColor: '#ffffff',
-      width: 794,
+      width: 900,
       logging: false
     })
     document.body.removeChild(container)
 
     const { jsPDF } = window.jspdf
-    const pdfW = 210        // A4 width mm
-    const pdfH = Math.round(canvas.height / canvas.width * pdfW)  // proportional height
+    const pdfW = 210  // A4 width mm
+    const pdfH = Math.round(canvas.height / canvas.width * pdfW)
 
-    // Strategy: split at A4 boundaries but only at row boundaries
-    // Use full-height custom page to avoid cutting rows
-    const A4H = 297
+    // Xuất 1 trang liên tục — không cắt trang, đọc trên mobile/màn hình
     const imgData = canvas.toDataURL('image/jpeg', 0.93)
-
-    if (pdfH <= A4H * 1.15) {
-      // Short enough — single A4 page, scale to fit
-      const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
-      const scale = Math.min(1, A4H / pdfH)
-      const drawH = pdfH * scale
-      const drawW = pdfW * scale
-      const offsetX = (pdfW - drawW) / 2
-      pdf.addImage(imgData, 'JPEG', offsetX, 0, drawW, drawH)
-      const fn = 'BC-TD_' + proj.code.replace(/[^a-zA-Z0-9]/g, '_') + '_Tuan' + week + '_' + year + '.pdf'
-      pdf.save(fn)
-    } else {
-      // Multi-page: use custom page height = full content (no cutting)
-      // Split into A4-sized slices by pixel rows
-      const pdf = new jsPDF({ unit: 'mm', format: [pdfW, A4H] })
-      const pxPerPage = Math.floor(canvas.height * A4H / pdfH)  // pixels per A4 page
-      const totalPages = Math.ceil(canvas.height / pxPerPage)
-
-      for (let pg = 0; pg < totalPages; pg++) {
-        if (pg > 0) pdf.addPage([pdfW, A4H])
-        const srcY = pg * pxPerPage
-        const srcH = Math.min(pxPerPage, canvas.height - srcY)
-        const sliceH_mm = srcH / canvas.height * pdfH
-
-        // Create slice canvas
-        const slice = document.createElement('canvas')
-        slice.width = canvas.width
-        slice.height = srcH
-        const ctx2 = slice.getContext('2d')
-        ctx2.fillStyle = '#ffffff'
-        ctx2.fillRect(0, 0, slice.width, slice.height)
-        ctx2.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH)
-
-        pdf.addImage(slice.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, pdfW, sliceH_mm)
-      }
-      const fn = 'BC-TD_' + proj.code.replace(/[^a-zA-Z0-9]/g, '_') + '_Tuan' + week + '_' + year + '.pdf'
-      pdf.save(fn)
-    }
+    const pdf = new jsPDF({ unit: 'mm', format: [pdfW, pdfH], orientation: 'portrait' })
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH)
+    const fn = 'BC-TD_' + proj.code.replace(/[^a-zA-Z0-9]/g, '_') + '_Tuan' + week + '_' + year + '.pdf'
+    pdf.save(fn)
     toast('Đã xuất PDF: ' + fn, 'success')
 
   } catch(e) {
@@ -384,11 +348,11 @@ async function showProgressHistory(taskId) {
 
   const rows = history?.length ? history.map(h => `
     <tr>
-      <td style="font-size:11px;color:var(--gray5)">${new Date(h.updated_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+      <td style="font-size:15px;color:var(--gray5)">${new Date(h.updated_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
       <td style="text-align:center;font-weight:600;color:var(--blue)">${h.actual_quantity != null ? h.actual_quantity + ' ' + (h.unit||'') : h.pct_complete + '%'}</td>
       <td style="text-align:center">${h.pct_complete}%</td>
-      <td style="font-size:11px">${h.note||'—'}</td>
-      <td style="font-size:11px;color:var(--gray4)">${h.updated_by?.split('@')[0]||'—'}</td>
+      <td style="font-size:15px">${h.note||'—'}</td>
+      <td style="font-size:15px;color:var(--gray4)">${h.updated_by?.split('@')[0]||'—'}</td>
       <td style="text-align:center">
         <button class="btn btn-secondary btn-sm" onclick="editProgress('${h.id}','${taskId}',${h.pct_complete},'${h.note||''}',${h.actual_quantity||'null'})">✏️</button>
         ${isAdmin ? `<button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteProgress('${h.id}','${taskId}')">🗑️</button>` : ''}
@@ -397,7 +361,7 @@ async function showProgressHistory(taskId) {
   : '<tr><td colspan="6" style="text-align:center;color:var(--gray4);padding:20px">Chưa có lịch sử cập nhật</td></tr>'
 
   openModal(`📋 Lịch sử: ${task.name}`,`
-    <div style="font-size:12px;color:var(--gray5);margin-bottom:12px">
+    <div style="font-size:16px;color:var(--gray5);margin-bottom:12px">
       KH: ${fmtDate(task.kh_start)} → ${fmtDate(task.kh_finish)} · Đơn vị: ${task.unit||'%'} · KH: ${task.planned_quantity||'—'}
     </div>
     <div style="overflow-x:auto">
@@ -411,7 +375,7 @@ async function showProgressHistory(taskId) {
       </table>
     </div>
     <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--gray2)">
-      <div style="font-size:12px;font-weight:600;color:var(--gray7);margin-bottom:8px">➕ Nhập tay override</div>
+      <div style="font-size:16px;font-weight:600;color:var(--gray7);margin-bottom:8px">➕ Nhập tay override</div>
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
         <div>
           <div class="form-label">% hoặc số lượng</div>
@@ -514,11 +478,11 @@ async function openKeyTaskModal(taskId) {
     : null
 
   openModal(`🔑 Key Task: ${task.name}`, `
-    <div style="font-size:12px;color:var(--gray5);margin-bottom:14px">
+    <div style="font-size:16px;color:var(--gray5);margin-bottom:14px">
       Chọn công tác con nào sẽ điều khiển % hoàn thành của "${task.name}".
       Nếu không chọn, hệ thống dùng trung bình có trọng số.
     </div>
-    ${curKeyTask ? `<div style="padding:8px 12px;background:var(--lblue);border-radius:6px;font-size:12px;margin-bottom:12px">
+    ${curKeyTask ? `<div style="padding:8px 12px;background:var(--lblue);border-radius:6px;font-size:16px;margin-bottom:12px">
       ✅ Key Task hiện tại: <strong>${curKeyTask.name}</strong>
     </div>` : ''}
     <div style="max-height:300px;overflow-y:auto;border:1px solid var(--gray2);border-radius:8px">
@@ -534,7 +498,7 @@ async function openKeyTaskModal(taskId) {
         <span>${c.id === curKeyTask?.id ? '🔑' : '○'}</span>
         <div>
           <div style="font-weight:500">${c.name}</div>
-          <div style="font-size:11px;color:var(--gray4)">${c.wbs_code} · ${c.pct_complete||0}% hoàn thành</div>
+          <div style="font-size:15px;color:var(--gray4)">${c.wbs_code} · ${c.pct_complete||0}% hoàn thành</div>
         </div>
       </div>`).join('')}
     </div>
@@ -596,14 +560,14 @@ async function openTaskSettings(taskId) {
         value="${task.unit_price||''}"
         style="font-size:14px;font-weight:500">
       ${task.unit_price && task.planned_quantity && task.unit !== '%'
-        ? '<div style="font-size:11px;color:var(--gray4);margin-top:4px">Tổng giá trị: <strong>' + ((task.unit_price * task.planned_quantity)/1e9).toFixed(3) + ' tỷ</strong></div>'
+        ? '<div style="font-size:15px;color:var(--gray4);margin-top:4px">Tổng giá trị: <strong>' + ((task.unit_price * task.planned_quantity)/1e9).toFixed(3) + ' tỷ</strong></div>'
         : task.unit_price && task.unit === '%'
-        ? '<div style="font-size:11px;color:var(--gray4);margin-top:4px">Giá trị công tác: <strong>' + (task.unit_price/1e9).toFixed(3) + ' tỷ</strong></div>'
+        ? '<div style="font-size:15px;color:var(--gray4);margin-top:4px">Giá trị công tác: <strong>' + (task.unit_price/1e9).toFixed(3) + ' tỷ</strong></div>'
         : ''}
     </div>
 
     ${task.is_summary ? `
-    <div style="margin-top:4px;padding:10px;background:var(--lblue);border-radius:6px;font-size:12px;color:var(--gray6)">
+    <div style="margin-top:4px;padding:10px;background:var(--lblue);border-radius:6px;font-size:16px;color:var(--gray6)">
       💡 Task này là hạng mục cha — bạn cũng có thể <a href="#" onclick="closeModal();openKeyTaskModal('${taskId}');return false" style="color:var(--blue)">chọn Key Task</a> để điều khiển tiến độ.
     </div>` : ''}
   `, `
