@@ -172,6 +172,60 @@ async function exportWeeklyReport() {
         </div>`
     }
 
+    // Build attendance chart HTML cho PDF
+    let attendanceHtml = ''
+    if (STATE._attendanceData?.history?.length) {
+      const hist    = STATE._attendanceData.history
+      const avgCN   = STATE._attendanceData.avgCN7 || 0
+      const maxCN   = Math.max(...hist.map(h => h.cn_proj||0), 1)
+      const W = 700, H = 160, PAD = 36
+      const barArea = W - PAD - 10
+      const barW2   = Math.max(8, Math.floor(barArea / hist.length) - 4)
+      const scaleH  = H - 50
+
+      const avgY = H - 32 - Math.round((avgCN / maxCN) * scaleH)
+
+      const bars2 = hist.map((d, i) => {
+        const cn  = d.cn_proj || 0
+        const h2  = Math.max(4, Math.round((cn / maxCN) * scaleH))
+        const x   = PAD + i * (barArea / hist.length)
+        const y   = H - 32 - h2
+        const dt  = new Date(d.report_date)
+        const lbl = `${dt.getDate()}/${dt.getMonth()+1}`
+        const dow = ['CN','T2','T3','T4','T5','T6','T7'][dt.getDay()]
+        const clr = cn > avgCN ? '#16A34A' : cn < avgCN * 0.8 ? '#DC2626' : '#60A5FA'
+        return `
+          <rect x="${x}" y="${y}" width="${barW2}" height="${h2}" fill="${clr}" rx="2" opacity="0.85"/>
+          <text x="${x+barW2/2}" y="${y-3}" text-anchor="middle" font-size="9" fill="#334155" font-weight="500">${cn}</text>
+          <text x="${x+barW2/2}" y="${H-16}" text-anchor="middle" font-size="8" fill="#64748B">${lbl}</text>
+          <text x="${x+barW2/2}" y="${H-6}" text-anchor="middle" font-size="7" fill="#94A3B8">${dow}</text>`
+      }).join('')
+
+      attendanceHtml = `
+        <div style="margin-bottom:16px">
+          <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
+            👷 QUÂN SỐ CÔNG NHÂN 30 NGÀY GẦN NHẤT
+          </div>
+          <div style="border:0.5px solid #E2E8F0;border-top:none;padding:12px;border-radius:0 0 4px 4px;background:#FAFAFA">
+            <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
+              <line x1="${PAD}" y1="${H-32}" x2="${W-10}" y2="${H-32}" stroke="#E2E8F0" stroke-width="0.5"/>
+              <line x1="${PAD}" y1="${avgY}" x2="${W-10}" y2="${avgY}" stroke="#D97706" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"/>
+              <text x="${W-8}" y="${avgY+4}" font-size="8" fill="#D97706" font-weight="600">TB</text>
+              <text x="${PAD-4}" y="${H-32}" text-anchor="end" font-size="8" fill="#94A3B8" dominant-baseline="middle">0</text>
+              <text x="${PAD-4}" y="${H-32-scaleH}" text-anchor="end" font-size="8" fill="#94A3B8" dominant-baseline="middle">${maxCN}</text>
+              ${bars2}
+            </svg>
+            <div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
+              <span>TB 30 ngày: <strong style="color:#2563EB;font-size:13px">${avgCN}</strong> CN/ngày</span>
+              <span style="color:#64748B">·</span>
+              <span style="display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;background:#16A34A;border-radius:2px;display:inline-block"></span> Trên TB</span>
+              <span style="display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;background:#DC2626;border-radius:2px;display:inline-block"></span> Dưới TB 20%</span>
+              <span style="display:flex;align-items:center;gap:3px"><span style="border-top:1px dashed #D97706;width:16px;display:inline-block"></span> Trung bình</span>
+            </div>
+          </div>
+        </div>`
+    }
+
     // Build full HTML
     const barW = Math.max(2, totalPct)
     const barClr = totalPct >= 70 ? '#16A34A' : totalPct >= 40 ? '#D97706' : '#DC2626'
@@ -274,6 +328,11 @@ async function exportWeeklyReport() {
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ATTENDANCE CHART -->
+  <div style="padding:0 24px 16px">
+    ${attendanceHtml}
   </div>
 
   <!-- FOOTER -->
