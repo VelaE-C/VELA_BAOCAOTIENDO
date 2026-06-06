@@ -83,8 +83,9 @@ async function initApp(user) {
   if (STATE.role === 'admin') {
     const su = document.getElementById('sidebar-users')
     if (su) su.style.display = 'flex'
-    const sp = document.getElementById('sidebar-portfolio')
-    if (sp) sp.style.display = 'flex'
+    // Portfolio BGD ẩn — thông tin tài chính đã tích hợp vào Dashboard từng dự án
+    // const sp = document.getElementById('sidebar-portfolio')
+    // if (sp) sp.style.display = 'flex'
   }
 
   navigate('dashboard')
