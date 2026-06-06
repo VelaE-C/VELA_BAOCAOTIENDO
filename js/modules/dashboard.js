@@ -129,7 +129,7 @@ async function loadDashboard() {
 
 
 // ═══════════════════════════════════════════════════════════
-// SỐ LƯỢNG CÔNG NHÂN THEO NGÀY — 7 ngày gần nhất
+// SỐ LƯỢNG CÔNG NHÂN THEO NGÀY — 30 ngày gần nhất
 // Source: v_attendance_daily_summary, filter theo cn_by_project
 // ═══════════════════════════════════════════════════════════
 async function loadAttendanceData() {
@@ -148,7 +148,7 @@ async function loadAttendanceData() {
       .from('v_attendance_daily_summary')
       .select('report_date,week_number,year,total_cn,total_bch,total_ketcau,total_hoanthien,total_mep,total_congnhat,total_khac,cn_by_project')
       .order('report_date', { ascending: false })
-      .limit(30)  // lấy 30 ngày để đảm bảo đủ 7 ngày có data dù BCH bỏ ngày
+      .limit(60)  // lấy 60 ngày để đảm bảo đủ 30 ngày có data
 
     if (error) throw error
 
@@ -161,10 +161,10 @@ async function loadAttendanceData() {
           ? JSON.parse(r.cn_by_project) : r.cn_by_project
         return Object.keys(map).some(k => k.includes(projCode.split(' ')[0]))
       })
-      .slice(0, 7)
+      .slice(0, 30)
 
     if (!filtered.length) {
-      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có dữ liệu 7 ngày gần nhất cho dự án này</span>'
+      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có dữ liệu 30 ngày gần nhất cho dự án này</span>'
       return
     }
 
@@ -180,7 +180,7 @@ async function loadAttendanceData() {
       return key ? (map[key] || 0) : 0
     }
 
-    // Tính trung bình 7 ngày
+    // Tính trung bình 30 ngày
     const cnList  = data.map(getCN)
     const avgCN7  = Math.round(cnList.reduce((s, v) => s + v, 0) / cnList.length)
     const maxCN   = Math.max(...cnList, 1)
@@ -192,17 +192,17 @@ async function loadAttendanceData() {
       current: {
         ...currentWeek,
         total_cn: getCN(currentWeek),
-        avg_cn_7day: avgCN7,
+        avg_cn_30day: avgCN7,
       },
       history: data.map(r => ({ ...r, cn_proj: getCN(r) })),
       avgCN7,
     }
 
-    if (weekEl) weekEl.textContent = `TB 7 ngày: ${avgCN7} CN/ngày`
+    if (weekEl) weekEl.textContent = `TB 30 ngày: ${avgCN7} CN/ngày`
 
     // Vẽ SVG bar chart
     const W = 600, H = 160, PAD = 36, BAR_AREA = W - PAD - 10
-    const barW = Math.max(24, Math.floor(BAR_AREA / data.length) - 8)
+    const barW = Math.max(8, Math.floor(BAR_AREA / data.length) - 4)
     const scaleH = H - 48
 
     const bars = data.map((d, i) => {
@@ -259,7 +259,7 @@ async function loadAttendanceData() {
       </svg>
 
       <div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:8px;border-top:1px solid var(--gray2);font-size:12px">
-        <div>TB 7 ngày: <strong style="color:var(--blue);font-size:14px">${avgCN7}</strong> CN/ngày</div>
+        <div>TB 30 ngày: <strong style="color:var(--blue);font-size:14px">${avgCN7}</strong> CN/ngày</div>
         <div style="color:var(--gray5)">—</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <span style="display:flex;align-items:center;gap:3px">
