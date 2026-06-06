@@ -17,6 +17,13 @@ function dashboard() {
     </div>
   </div>
   <div class="metrics-row" id="dash-metrics"></div>
+  <div class="card" id="dash-finance-card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin-bottom:0">💰 Tài chính dự án</div>
+      <span style="font-size:11px;color:var(--gray4)" id="dash-finance-updated"></span>
+    </div>
+    <div id="dash-finance-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px"></div>
+  </div>
   <div class="card">
     <div class="card-title">Tiến độ theo hạng mục lớn</div>
     <div class="card-sub">Chỉ hiển thị task cấp 2-3 (hạng mục tổng hợp)</div>
@@ -121,6 +128,8 @@ async function loadDashboard() {
       </tbody>
     </table>`
 
+  // Load tài chính
+  loadFinanceData()
   // Load attendance từ Supabase
   loadAttendanceData()
   // Load ảnh tuần này
@@ -379,5 +388,107 @@ async function loadDashboardPhotos() {
   } catch(e) {
     console.warn('Dashboard photos failed:', e.message)
     el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi tải ảnh: ${e.message}</span>`
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TÀI CHÍNH DỰ ÁN — từ projects.contract_value + payment_records
+// ═══════════════════════════════════════════════════════════
+async function loadFinanceData() {
+  const card = document.getElementById('dash-finance-card')
+  const el   = document.getElementById('dash-finance-metrics')
+  if (!el || !STATE.currentProject) return
+
+  try {
+    const proj = STATE.currentProject
+
+    // Lấy contract_value từ projects table
+    const { data: projData } = await sb
+      .from('projects')
+      .select('contract_value')
+      .eq('id', proj.id)
+      .single()
+
+    const contractValue = projData?.contract_value || 0
+
+    // Lấy tổng đã nhận từ payment_records
+    const { data: payments } = await sb
+      .from('payment_records')
+      .select('amount, received_date, note')
+      .eq('project_id', proj.id)
+      .order('received_date', { ascending: false })
+
+    const totalReceived = (payments || []).reduce((s, p) => s + (p.amount || 0), 0)
+
+    // Tính sản lượng thực hiện = Σ (task giá trị × % hoàn thành)
+    const tasks = STATE.tasks || []
+    const leaf  = tasks.filter(t => !t.is_summary)
+    let earnedValue = 0
+    if (contractValue > 0 && leaf.length > 0) {
+      // Phân bổ đều giá trị HĐ cho các task lá (nếu task chưa có giá riêng)
+      const unitValue = contractValue / leaf.length
+      earnedValue = leaf.reduce((s, t) => {
+        const taskVal = t.contract_value || unitValue
+        return s + taskVal * (t.pct_complete || 0) / 100
+      }, 0)
+    }
+
+    const remaining    = contractValue > 0 ? contractValue - totalReceived : null
+    const totalPct     = tasks.find(t => t.outline_level === 1)?.display_pct || 0
+    const receiveRate  = contractValue > 0 ? Math.round(totalReceived / contractValue * 100) : null
+    const earnRate     = contractValue > 0 ? Math.round(earnedValue / contractValue * 100) : null
+
+    // Ẩn/hiện card
+    if (contractValue === 0 && totalReceived === 0) {
+      card.style.display = 'none'
+      return
+    }
+    card.style.display = 'block'
+
+    // Lần nhận gần nhất
+    const lastPayment = payments?.[0]
+    const lastDate = lastPayment?.received_date
+      ? new Date(lastPayment.received_date).toLocaleDateString('vi-VN', {day:'2-digit',month:'2-digit',year:'numeric'})
+      : null
+    const updEl = document.getElementById('dash-finance-updated')
+    if (updEl && lastDate) updEl.textContent = `Cập nhật: ${lastDate}`
+
+    // Màu cảnh báo: tiến độ nhận tiền thấp hơn tiến độ thi công > 10% → cần chú ý
+    const payGap = receiveRate !== null && earnRate !== null ? earnRate - receiveRate : null
+    const gapColor = payGap !== null && payGap > 15 ? 'var(--red)'
+                   : payGap !== null && payGap > 5  ? 'var(--amber)'
+                   : 'var(--green)'
+
+    el.innerHTML = [
+      contractValue > 0 ? `
+        <div class="metric-card">
+          <div class="m-lbl">Giá trị hợp đồng</div>
+          <div class="m-val" style="font-size:18px;color:var(--navy)">${fmtMoneyFull(contractValue)}</div>
+          <div class="m-sub">Tổng giá trị HĐ</div>
+        </div>` : '',
+      earnedValue > 0 ? `
+        <div class="metric-card">
+          <div class="m-lbl">Sản lượng thực hiện</div>
+          <div class="m-val" style="font-size:18px;color:var(--teal)">${fmtMoneyFull(earnedValue)}</div>
+          <div class="m-sub">${earnRate}% giá trị HĐ · TĐ ${totalPct}%</div>
+        </div>` : '',
+      `<div class="metric-card">
+          <div class="m-lbl">Đã nhận từ CĐT</div>
+          <div class="m-val" style="font-size:18px;color:var(--green)">${fmtMoneyFull(totalReceived)}</div>
+          <div class="m-sub">${receiveRate !== null ? receiveRate + '% giá trị HĐ' : '—'}</div>
+        </div>`,
+      remaining !== null ? `
+        <div class="metric-card">
+          <div class="m-lbl">Còn phải nhận</div>
+          <div class="m-val" style="font-size:18px;color:${payGap !== null && payGap > 10 ? 'var(--amber)' : 'var(--gray7)'}">${fmtMoneyFull(remaining)}</div>
+          <div class="m-sub">${payGap !== null ? `SL vượt nhận ${payGap > 0 ? '+' : ''}${payGap}%` : '—'}</div>
+        </div>` : '',
+    ].filter(Boolean).join('')
+
+    // Lưu vào STATE để PDF dùng
+    STATE._financeData = { contractValue, earnedValue, totalReceived, remaining, earnRate, receiveRate, payGap, payments: payments || [] }
+
+  } catch(e) {
+    console.warn('Finance load failed:', e.message)
   }
 }
