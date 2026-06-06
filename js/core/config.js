@@ -151,6 +151,44 @@ function computeRollupDelay(tasks) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ROLLUP tt_start / tt_finish cho summary tasks từ con
+// Chạy sau loadProjectData để Gantt hiện bar thực tế ở summary
+// ═══════════════════════════════════════════════════════════
+function computeRollupActualDates(tasks) {
+  // Sort bottom-up
+  const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
+
+  sorted.forEach(parent => {
+    if (!parent.is_summary) return
+
+    // Direct children only
+    const children = tasks.filter(c =>
+      c.wbs_code && parent.wbs_code &&
+      c.wbs_code.startsWith(parent.wbs_code + '.') &&
+      c.wbs_code.split('.').length === parent.wbs_code.split('.').length + 1
+    )
+    if (!children.length) return
+
+    // tt_start cha = MIN tt_start con (chỉ con có tt_start)
+    const starts  = children.map(c => c._tt_start || c.tt_start).filter(Boolean).sort()
+    // tt_finish cha = MAX tt_finish con (hoặc dùng today nếu đang thi công)
+    const finishes = children.map(c => c._tt_finish || c.tt_finish).filter(Boolean).sort()
+
+    parent._tt_start  = starts[0]  || null
+    parent._tt_finish = finishes[finishes.length - 1] || null
+  })
+
+  // Assign lại để Gantt dùng được
+  tasks.forEach(t => {
+    if (t.is_summary) {
+      t.tt_start  = t._tt_start  || t.tt_start  || null
+      t.tt_finish = t._tt_finish || t.tt_finish || null
+    }
+  })
+  return tasks
+}
+
+// ═══════════════════════════════════════════════════════════
 // COMPUTE PARENT DATES từ task con (lưu vào DB)
 // kh_start cha = MIN start con, kh_finish cha = MAX finish con
 // ═══════════════════════════════════════════════════════════
@@ -212,146 +250,5 @@ async function recomputeParentDates(projectId) {
     toast('Lỗi: ' + e.message, 'error')
   } finally {
     loading(false)
-  }
-}
-
-// ── Tam suất: tính lệch theo velocity ─────────────────────────────────────
-function calcProgressDetail(task) {
-  // Summary tasks: use pre-computed rollup delay (max of children)
-  if (task.is_summary && task._delayDetail !== undefined) {
-    return task._delayDetail
-  }
-  const today   = new Date(); today.setHours(0,0,0,0)
-  const khStart = task.kh_start  ? new Date(task.kh_start)  : null
-  const khEnd   = task.kh_finish ? new Date(task.kh_finish) : null
-  const ttFinish= task.tt_finish ? new Date(task.tt_finish) : null
-  const pct     = task.display_pct !== undefined ? task.display_pct : (task.pct_complete||0)
-  const hasUnit = task.unit && task.unit !== '%' && task.planned_quantity > 0
-  const planQty = task.planned_quantity || 0
-  const actQty  = (task.actual_quantity != null && task.actual_quantity !== undefined)
-                  ? task.actual_quantity : 0   // fix undefined
-  const khDays  = (khStart && khEnd) ? Math.round((khEnd - khStart) / 86400000) : 0
-
-  // ── 1. Đã hoàn thành: so ngày TT xong vs KH xong ──────────────────────
-  if (pct === 100 && ttFinish && khEnd) {
-    const d = Math.round((ttFinish - khEnd) / 86400000)
-    return {
-      delayDays: d,
-      label: d > 0  ? `Trễ ${d} ngày`
-           : d < 0  ? `Hoàn thành sớm ${Math.abs(d)} ngày`
-           : `Đúng KH`,
-      done: true, hasUnit: false
-    }
-  }
-
-  // ── 2. Chưa bắt đầu ────────────────────────────────────────────────────
-  if (!task.tt_start) {
-    // Nếu đã qua ngày KH bắt đầu mà chưa làm → tính số ngày trễ bắt đầu
-    if (khStart && today > khStart) {
-      const startDelay = Math.round((today - khStart) / 86400000)
-      return { delayDays: startDelay, label: `Chưa BĐ · trễ ${startDelay} ngày`, done:false, hasUnit:false }
-    }
-    return { delayDays:null, label:'—', done:false, hasUnit:false }
-  }
-
-  if (!khStart || !khEnd || khDays <= 0)
-    return { delayDays:null, label:'—', done:false, hasUnit:false }
-
-  // ── 3. Đang thi công ────────────────────────────────────────────────────
-  // Nếu tt_start < kh_start → bắt đầu sớm hơn KH
-  const ttStartDate  = task.tt_start ? new Date(task.tt_start) : null
-  const earlyStartDays = (ttStartDate && ttStartDate < khStart)
-    ? Math.round((khStart - ttStartDate) / 86400000) : 0
-
-  // elapsedDays tính từ KH start (gốc velocity), nhưng nếu bắt đầu sớm
-  // thì kỳ vọng thực tế phải trừ đi số ngày sớm → kỳ vọng thấp hơn
-  const elapsedDays = Math.round((today - khStart) / 86400000)
-
-  // Nếu chưa đến ngày KH bắt đầu nhưng đã bắt đầu sớm
-  if (elapsedDays <= 0 && earlyStartDays > 0) {
-    // Đã bắt đầu trước KH, tính sớm theo số ngày đã làm trước KH
-    const earlyElapsed = Math.round((today - ttStartDate) / 86400000)
-    if (hasUnit && planQty > 0) {
-      const velocity = planQty / khDays
-      const earlyExpected = Math.round(velocity * earlyElapsed)
-      const aheadQty  = Math.max(0, actQty - earlyExpected)
-      const aheadDays = earlyStartDays + (aheadQty > 0 ? Math.round(aheadQty/velocity) : 0)
-      return { delayDays: -aheadDays, aheadDays, aheadQty, unit: task.unit,
-               label: `Sớm ${aheadDays} ngày${aheadQty>0?' · dư '+aheadQty+' '+task.unit:''}`,
-               done:false, hasUnit:true }
-    }
-    return { delayDays: -earlyStartDays, aheadDays: earlyStartDays,
-             label: `Bắt đầu sớm ${earlyStartDays} ngày`, done:false, hasUnit:false }
-  }
-
-  if (elapsedDays <= 0 && earlyStartDays === 0)
-    return { delayDays:0, label:'Đúng KH', done:false, hasUnit:false }
-
-  if (hasUnit && planQty > 0) {
-    // ── Tam suất theo đơn vị (căn, m², m³...) ──────────────────────────
-    const velocity    = planQty / khDays
-    // Nếu bắt đầu sớm: tại thời điểm KH bắt đầu, task đã có earlyStartDays*velocity done
-    const earlyBonus  = Math.round(velocity * earlyStartDays)
-    const expectedQty = Math.max(0, Math.round(velocity * Math.min(elapsedDays, khDays)) - earlyBonus)
-    const missingQty  = Math.max(0, expectedQty - actQty)
-    const delayDays   = missingQty > 0 ? Math.round(missingQty / velocity) : 0
-
-    let overrunDays = 0
-    if (khEnd && today > khEnd && pct < 100) {
-      overrunDays = Math.round((today - khEnd) / 86400000)
-    }
-    const totalDelay = Math.max(delayDays, overrunDays) - earlyStartDays
-
-    // Tính buffer: dư so với kỳ vọng + bonus từ bắt đầu sớm
-    const aheadQty  = Math.max(0, actQty - expectedQty)
-    const aheadDays = aheadQty > 0
-      ? Math.round(aheadQty / velocity) + earlyStartDays
-      : earlyStartDays > 0 && missingQty === 0 ? earlyStartDays : 0
-
-    return {
-      delayDays:  totalDelay > 0 ? totalDelay : -aheadDays,
-      missingQty: totalDelay > 0 ? missingQty : 0,
-      aheadQty,
-      aheadDays,
-      unit: task.unit,
-      label: totalDelay > 0
-        ? `Trễ ${totalDelay} ngày · thiếu ${missingQty} ${task.unit}`
-        : aheadDays > 0
-        ? `Sớm ${aheadDays} ngày · dư ${aheadQty} ${task.unit}`
-        : `Đúng KH`,
-      done: false, hasUnit: true
-    }
-  } else {
-    // ── Tam suất theo % ────────────────────────────────────────────────
-    const velocityPct  = 100 / khDays
-    const earlyBonusPct = velocityPct * earlyStartDays
-    const expectedPct  = Math.max(0, Math.min(100, Math.round(velocityPct * Math.min(elapsedDays, khDays))) - Math.round(earlyBonusPct))
-    const missingPct   = Math.max(0, expectedPct - pct)
-    const delayDays    = missingPct > 0 ? Math.round(missingPct / velocityPct) : 0
-
-    let overrunDays = 0
-    if (khEnd && today > khEnd && pct < 100) {
-      overrunDays = Math.round((today - khEnd) / 86400000)
-    }
-    const totalDelay = Math.max(delayDays, overrunDays) - earlyStartDays
-
-    // Buffer % + bonus từ bắt đầu sớm
-    const aheadPct  = Math.max(0, pct - expectedPct)
-    const aheadDays = aheadPct > 0
-      ? Math.round(aheadPct / velocityPct) + earlyStartDays
-      : earlyStartDays > 0 && missingPct === 0 ? earlyStartDays : 0
-
-    return {
-      delayDays:  totalDelay > 0 ? totalDelay : -aheadDays,
-      missingPct: totalDelay > 0 ? missingPct : 0,
-      aheadPct,
-      aheadDays,
-      label: totalDelay > 0
-        ? `Trễ ${totalDelay} ngày · thiếu ${missingPct}%`
-        : aheadDays > 0
-        ? `Sớm ${aheadDays} ngày · dư ${aheadPct}%`
-        : `Đúng KH`,
-      done: false, hasUnit: false
-    }
   }
 }
