@@ -97,6 +97,7 @@ async function loadProjectData(projectId) {
       .select('*').eq('project_id', projectId).order('sort_order')
     STATE.tasks = computeRollupPct(tasks || [])
     computeRollupDelay(STATE.tasks)
+    computeRollupActualDates(STATE.tasks)  // rollup tt_start/finish cho Gantt
 
     STATE.progress = {}
     STATE.tasks.forEach(t => { STATE.progress[t.id] = t })
