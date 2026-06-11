@@ -578,7 +578,8 @@ function parseBulkDate(inp) {
 function openBulkReschedule() {
   if (!STATE.currentProject) { toast('Chưa có dự án', 'error'); return }
 
-  const tasks = STATE.tasks
+  // Giữ đúng thứ tự sort_order từ STATE.tasks (đã sorted sẵn)
+  const tasks = [...STATE.tasks].sort((a,b) => (a.sort_order||0) - (b.sort_order||0))
   if (!tasks.length) { toast('Chưa có dữ liệu công tác', 'error'); return }
 
   // Build tree rows cho bảng
