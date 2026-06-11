@@ -135,7 +135,7 @@ function initWbs() {
         })()}
       </div>
       ${(() => {
-        const qty = t.kh_quantity || (t.is_summary ? 0 : 1)
+        const qty = t.planned_quantity || (t.is_summary ? 0 : 1)
         const contractVal = (t.unit_price||0) * qty
         // Summary: rollup từ con
         let cv = contractVal
@@ -162,7 +162,7 @@ function initWbs() {
   // Rollup contract value cho summary tasks
   STATE.tasks.sort((a,b) => b.outline_level - a.outline_level).forEach(t => {
     if (!t.is_summary) {
-      t._contractValue = (t.unit_price||0) * (t.kh_quantity||1)
+      t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
       return
     }
     const children = STATE.tasks.filter(c =>
@@ -1043,32 +1043,57 @@ async function saveBulkReschedule() {
 function openBulkUnitPrice() {
   if (!STATE.currentProject) { toast('Chưa có dự án', 'error'); return }
 
-  const leafTasks = STATE.tasks.filter(t => !t.is_summary)
-  if (!leafTasks.length) { toast('Chưa có công tác nào', 'error'); return }
+  const allTasks = STATE.tasks
+  if (!allTasks.length) { toast('Chưa có công tác nào', 'error'); return }
 
-  // Tính tổng hiện tại
-  const currentTotal = leafTasks.reduce((s,t) => {
-    return s + (t.unit_price||0) * (t.kh_quantity||1)
+  // Tính tổng hiện tại (chỉ từ task lá)
+  const currentTotal = allTasks.filter(t=>!t.is_summary).reduce((s,t) => {
+    const qty = t.planned_quantity || 1
+    return s + (t.unit_price||0) * qty
   }, 0)
 
-  const rows = leafTasks.map(t => {
-    const indent = Math.max(0, (t.outline_level - 1)) * 12
-    const contractVal = (t.unit_price||0) * (t.kh_quantity||1)
+  const rows = allTasks.map(t => {
+    const indent = Math.max(0, (t.outline_level - 1)) * 14
+    const qty = t.planned_quantity || (t.is_summary ? null : 1)
+    const qtyDisplay = qty ? qty + ' ' + (t.unit||'') : (t.is_summary ? '' : '—')
+    const contractVal = t.is_summary
+      ? (t._contractValue || 0)
+      : (t.unit_price||0) * (qty||1)
     const fmtM = v => v > 0 ? v.toFixed(0) + ' M' : ''
+
+    if (t.is_summary) {
+      // Task cha: hiển thị như header, không nhập được
+      return `
+        <tr style="background:${t.outline_level===1?'#1A2B4A':t.outline_level===2?'#EEF2FF':'var(--gray1)'}">
+          <td colspan="3" style="padding:6px 8px;padding-left:${8+indent}px;
+            font-size:12px;font-weight:600;
+            color:${t.outline_level<=2?'white':'var(--navy)'}"
+            title="${t.name}">
+            ▸ ${t.name}
+          </td>
+          <td style="padding:6px 8px;text-align:right;font-size:12px;font-weight:600;
+            color:${t.outline_level<=2?'#93C5FD':'var(--navy)'}">
+            ${contractVal>0 ? fmtM(contractVal) : ''}
+          </td>
+        </tr>`
+    }
+
     return `
-      <tr data-task-id="${t.id}">
-        <td style="padding:5px 8px;font-size:12px;padding-left:${8+indent}px;color:var(--gray7);max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${t.name}">
+      <tr data-task-id="${t.id}" style="border-bottom:0.5px solid var(--gray2)">
+        <td style="padding:5px 8px;font-size:12px;padding-left:${8+indent}px;
+          color:var(--gray7);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+          title="${t.name}">
           ${t.name}
         </td>
-        <td style="padding:4px 6px;text-align:center;font-size:11px;color:var(--gray5)">
-          ${t.kh_quantity ? t.kh_quantity + ' ' + (t.unit||'') : '—'}
+        <td style="padding:4px 6px;text-align:center;font-size:11px;color:var(--blue);font-weight:500;white-space:nowrap">
+          ${qtyDisplay}
         </td>
         <td style="padding:4px 6px;text-align:center">
           <div style="display:flex;align-items:center;gap:4px;justify-content:center">
             <input type="number" class="up-input form-input"
               data-task-id="${t.id}"
-              data-qty="${t.kh_quantity||1}"
-              style="padding:3px 6px;font-size:12px;width:100px;text-align:right"
+              data-qty="${qty||1}"
+              style="padding:3px 6px;font-size:12px;width:90px;text-align:right"
               value="${t.unit_price||''}"
               placeholder="0"
               min="0" step="0.1"
@@ -1077,7 +1102,8 @@ function openBulkUnitPrice() {
           </div>
         </td>
         <td class="up-contract" data-task-id="${t.id}"
-          style="padding:5px 8px;text-align:right;font-size:12px;font-weight:500;color:${contractVal>0?'var(--navy)':'var(--gray3)'}">
+          style="padding:5px 8px;text-align:right;font-size:12px;font-weight:500;
+          color:${contractVal>0?'var(--navy)':'var(--gray3)'}">
           ${fmtM(contractVal)}
         </td>
       </tr>`
@@ -1137,7 +1163,8 @@ function openBulkUnitPrice() {
 
 function updateUPRow(inp) {
   const taskId  = inp.dataset.taskId
-  const qty     = parseFloat(inp.dataset.qty) || 1
+  const task    = STATE.tasks.find(t => t.id === inp.dataset.taskId)
+  const qty     = parseFloat(inp.dataset.qty) || task?.planned_quantity || 1
   const price   = parseFloat(inp.value) || 0
   const val     = price * qty
 
