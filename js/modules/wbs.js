@@ -534,20 +534,25 @@ function openBulkReschedule() {
           ${isSummary?'▼ ':''}${t.name}
         </td>
         <td style="padding:5px 8px;font-size:11px;color:var(--gray5);text-align:center">
-          ${t.kh_start ? new Date(t.kh_start).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
+          ${t.kh_start ? fmtDateShort(t.kh_start) : '—'}
         </td>
         <td style="padding:5px 8px;font-size:11px;color:var(--gray5);text-align:center">
-          ${t.kh_finish ? new Date(t.kh_finish).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
+          ${t.kh_finish ? fmtDateShort(t.kh_finish) : '—'}
+        </td>
+        <td style="padding:5px 8px;font-size:11px;color:var(--blue);text-align:center;font-weight:500">
+          ${t.kh_duration_days || '—'}
         </td>
         <td style="padding:4px 6px;text-align:center">
           <input type="date" class="bulk-new-start form-input"
-            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:130px"
-            value="${t.kh_start||''}" disabled>
+            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:120px"
+            value="${t.kh_start||''}" disabled
+            onchange="recalcDuration(this)">
         </td>
         <td style="padding:4px 6px;text-align:center">
           <input type="date" class="bulk-new-finish form-input"
-            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:130px"
-            value="${t.kh_finish||''}" disabled>
+            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:120px"
+            value="${t.kh_finish||''}" disabled
+            onchange="recalcDuration(this)">
         </td>
         <td class="bulk-delta" data-task-id="${t.id}"
           style="padding:5px 8px;font-size:11px;text-align:center;color:var(--gray4)">—</td>
@@ -619,11 +624,12 @@ function openBulkReschedule() {
             <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:1">
               <th style="padding:7px 8px;width:32px"></th>
               <th style="padding:7px 8px;text-align:left">Hạng mục / Công tác</th>
-              <th style="padding:7px 8px;text-align:center;width:90px">KH BD cũ</th>
-              <th style="padding:7px 8px;text-align:center;width:90px">KH KT cũ</th>
-              <th style="padding:7px 8px;text-align:center;width:140px">KH BD mới</th>
-              <th style="padding:7px 8px;text-align:center;width:140px">KH KT mới</th>
-              <th style="padding:7px 8px;text-align:center;width:60px">Δ ngày</th>
+              <th style="padding:7px 8px;text-align:center;width:85px">KH BD cũ</th>
+              <th style="padding:7px 8px;text-align:center;width:85px">KH KT cũ</th>
+              <th style="padding:7px 8px;text-align:center;width:55px">Số ngày</th>
+              <th style="padding:7px 8px;text-align:center;width:130px">KH BD mới</th>
+              <th style="padding:7px 8px;text-align:center;width:130px">KH KT mới</th>
+              <th style="padding:7px 8px;text-align:center;width:55px">Δ ngày</th>
             </tr>
           </thead>
           <tbody id="bulk-task-tbody">${rows}</tbody>
@@ -760,6 +766,25 @@ function calcRowDelta(row) {
     deltaEl.style.color = delta > 0 ? 'var(--red)' : 'var(--green)'
     deltaEl.style.fontWeight = '600'
   }
+}
+
+// Tính lại số ngày khi thay đổi ngày BD hoặc KT mới
+function recalcDuration(inp) {
+  const row       = inp.closest('tr')
+  if (!row) return
+  const startInp  = row.querySelector('.bulk-new-start')
+  const finishInp = row.querySelector('.bulk-new-finish')
+  const durCell   = row.querySelector('.bulk-dur-new')
+  if (!startInp || !finishInp) return
+
+  // Tính số ngày mới
+  if (startInp.value && finishInp.value && durCell) {
+    const days = Math.round((new Date(finishInp.value) - new Date(startInp.value)) / 86400000)
+    durCell.textContent = days >= 0 ? days + 'd' : '—'
+    durCell.style.color = 'var(--blue)'
+  }
+  calcRowDelta(row)
+  updateBulkPreview()
 }
 
 function updateBulkPreview() {
