@@ -14,6 +14,7 @@ function wbs() {
       ${STATE.role !== 'updater' ? `
         <button class="btn btn-secondary btn-sm" onclick="recomputeParentDates('${STATE.currentProject?.id}')">🔄 Sync ngày KH cha</button>
         <button class="btn btn-secondary btn-sm" onclick="openBulkReschedule()" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A">📅 Điều chỉnh tiến độ</button>
+        <button class="btn btn-secondary btn-sm" onclick="openBulkUnitPrice()" style="background:#DCFCE7;color:#166534;border-color:#BBF7D0">💰 Nhập đơn giá</button>
         <button class="btn btn-primary btn-sm" onclick="openAddTaskModal()">➕ Thêm công tác</button>
       ` : ''}
     </div>
@@ -26,8 +27,12 @@ function wbs() {
       <div class="wbs-kh-end">KH Kết thúc</div>
       <div class="wbs-dur">Ngày KH</div>
       <div class="wbs-pct">Tiến độ</div>
+      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ</div>
+      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH</div>
       <div class="wbs-status" style="width:90px">Đơn vị/KH</div>
       <div class="wbs-status">Trạng thái</div>
+      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ</div>
+      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH</div>
     </div>
     <div class="wbs-tree" id="wbs-container"></div>
   </div>`
@@ -129,8 +134,44 @@ function initWbs() {
           return '<span class="badge badge-red" style="white-space:normal;line-height:1.4;font-size:10px">Trễ '+d.delayDays+'n<br>-'+qty+'</span>'
         })()}
       </div>
+      ${(() => {
+        const qty = t.kh_quantity || (t.is_summary ? 0 : 1)
+        const contractVal = (t.unit_price||0) * qty
+        // Summary: rollup từ con
+        let cv = contractVal
+        if (t.is_summary && t._contractValue !== undefined) cv = t._contractValue
+        const earnedVal = cv * (t.display_pct||0) / 100
+        const fmtM = v => {
+          if (!v || v === 0) return '—'
+          if (v >= 1000) return (v/1000).toFixed(1) + 'T'
+          return v.toFixed(0) + 'M'
+        }
+        return `
+          <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+            color:${cv>0?'var(--navy)':'var(--gray3)'};font-weight:${cv>0?'500':'400'}">
+            ${fmtM(cv)}
+          </div>
+          <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+            font-weight:500;color:${earnedVal>0?'var(--teal)':'var(--gray3)'}">
+            ${cv>0 ? fmtM(earnedVal) : '—'}
+          </div>`
+      })()}
     </div>`
   }).join('')
+
+  // Rollup contract value cho summary tasks
+  STATE.tasks.sort((a,b) => b.outline_level - a.outline_level).forEach(t => {
+    if (!t.is_summary) {
+      t._contractValue = (t.unit_price||0) * (t.kh_quantity||1)
+      return
+    }
+    const children = STATE.tasks.filter(c =>
+      c.wbs_code && t.wbs_code &&
+      c.wbs_code.startsWith(t.wbs_code + '.') &&
+      c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
+    )
+    t._contractValue = children.reduce((s, c) => s + (c._contractValue||0), 0)
+  })
 
   document.getElementById('wbs-container').innerHTML = rows
   // Default: show all
@@ -993,5 +1034,181 @@ async function saveBulkReschedule() {
   } finally {
     loading(false)
     if (btn) { btn.disabled = false; btn.innerHTML = '💾 Lưu điều chỉnh' }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// BULK NHẬP ĐƠN GIÁ — Nhập đơn giá hàng loạt cho task lá
+// ═══════════════════════════════════════════════════════════
+function openBulkUnitPrice() {
+  if (!STATE.currentProject) { toast('Chưa có dự án', 'error'); return }
+
+  const leafTasks = STATE.tasks.filter(t => !t.is_summary)
+  if (!leafTasks.length) { toast('Chưa có công tác nào', 'error'); return }
+
+  // Tính tổng hiện tại
+  const currentTotal = leafTasks.reduce((s,t) => {
+    return s + (t.unit_price||0) * (t.kh_quantity||1)
+  }, 0)
+
+  const rows = leafTasks.map(t => {
+    const indent = Math.max(0, (t.outline_level - 1)) * 12
+    const contractVal = (t.unit_price||0) * (t.kh_quantity||1)
+    const fmtM = v => v > 0 ? v.toFixed(0) + ' M' : ''
+    return `
+      <tr data-task-id="${t.id}">
+        <td style="padding:5px 8px;font-size:12px;padding-left:${8+indent}px;color:var(--gray7);max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${t.name}">
+          ${t.name}
+        </td>
+        <td style="padding:4px 6px;text-align:center;font-size:11px;color:var(--gray5)">
+          ${t.kh_quantity ? t.kh_quantity + ' ' + (t.unit||'') : '—'}
+        </td>
+        <td style="padding:4px 6px;text-align:center">
+          <div style="display:flex;align-items:center;gap:4px;justify-content:center">
+            <input type="number" class="up-input form-input"
+              data-task-id="${t.id}"
+              data-qty="${t.kh_quantity||1}"
+              style="padding:3px 6px;font-size:12px;width:100px;text-align:right"
+              value="${t.unit_price||''}"
+              placeholder="0"
+              min="0" step="0.1"
+              oninput="updateUPRow(this)">
+            <span style="font-size:11px;color:var(--gray4)">M</span>
+          </div>
+        </td>
+        <td class="up-contract" data-task-id="${t.id}"
+          style="padding:5px 8px;text-align:right;font-size:12px;font-weight:500;color:${contractVal>0?'var(--navy)':'var(--gray3)'}">
+          ${fmtM(contractVal)}
+        </td>
+      </tr>`
+  }).join('')
+
+  const fmtT = v => v >= 1000 ? (v/1000).toFixed(2)+'T' : v.toFixed(0)+'M'
+
+  openModal('💰 Nhập đơn giá hàng loạt', `
+    <div style="min-height:50vh">
+      <div style="background:var(--lblue);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;
+        display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px;color:var(--blue)">
+          Nhập đơn giá (triệu đồng) cho từng công tác.<br>
+          <span style="font-size:11px;color:var(--gray5)">Sản lượng TH = Đơn giá × Khối lượng KH × % hoàn thành</span>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--gray5)">Tổng giá trị HĐ</div>
+          <div id="up-total" style="font-size:18px;font-weight:700;color:var(--navy)">${fmtT(currentTotal)}</div>
+        </div>
+      </div>
+
+      <div style="max-height:400px;overflow-y:auto;border:1px solid var(--gray2);border-radius:var(--radius)">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:1">
+              <th style="padding:7px 8px;text-align:left">Hạng mục / Công tác</th>
+              <th style="padding:7px 8px;text-align:center;width:100px">Khối lượng KH</th>
+              <th style="padding:7px 8px;text-align:center;width:140px">Đơn giá (triệu)</th>
+              <th style="padding:7px 8px;text-align:right;width:100px">Giá trị HĐ</th>
+            </tr>
+          </thead>
+          <tbody id="up-tbody">${rows}</tbody>
+          <tfoot>
+            <tr style="background:var(--navy);color:white">
+              <td colspan="3" style="padding:8px 12px;font-size:12px;font-weight:600">TỔNG GIÁ TRỊ HỢP ĐỒNG</td>
+              <td id="up-total-foot" style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700">${fmtT(currentTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `, `
+    <div style="display:flex;align-items:center;gap:8px;width:100%;justify-content:space-between">
+      <span style="font-size:12px;color:var(--gray5)" id="up-changed-count">Chưa có thay đổi</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" id="btn-up-save" onclick="saveBulkUnitPrice()">
+          💾 Lưu đơn giá
+        </button>
+      </div>
+    </div>
+  `)
+
+  document.querySelector('.modal').style.maxWidth = '700px'
+  document.querySelector('.modal').style.maxHeight = '88vh'
+}
+
+function updateUPRow(inp) {
+  const taskId  = inp.dataset.taskId
+  const qty     = parseFloat(inp.dataset.qty) || 1
+  const price   = parseFloat(inp.value) || 0
+  const val     = price * qty
+
+  // Update contract cell
+  const cell = document.querySelector(`.up-contract[data-task-id="${taskId}"]`)
+  if (cell) {
+    cell.textContent = val > 0 ? val.toFixed(0) + ' M' : '—'
+    cell.style.color = val > 0 ? 'var(--navy)' : 'var(--gray3)'
+  }
+
+  // Update tổng
+  let total = 0
+  document.querySelectorAll('.up-input').forEach(i => {
+    const p = parseFloat(i.value) || 0
+    const q = parseFloat(i.dataset.qty) || 1
+    total += p * q
+  })
+  const fmtT = v => v >= 1000 ? (v/1000).toFixed(2)+'T' : v.toFixed(0)+'M'
+  const totalEl = document.getElementById('up-total')
+  const totalFoot = document.getElementById('up-total-foot')
+  if (totalEl) totalEl.textContent = fmtT(total)
+  if (totalFoot) totalFoot.textContent = fmtT(total)
+
+  // Đếm thay đổi
+  let changed = 0
+  document.querySelectorAll('.up-input').forEach(i => {
+    const task = STATE.tasks.find(t => t.id === i.dataset.taskId)
+    const oldPrice = task?.unit_price || 0
+    const newPrice = parseFloat(i.value) || 0
+    if (oldPrice !== newPrice) changed++
+  })
+  const countEl = document.getElementById('up-changed-count')
+  if (countEl) countEl.textContent = changed > 0
+    ? `✏️ ${changed} công tác sẽ được cập nhật đơn giá`
+    : 'Chưa có thay đổi'
+}
+
+async function saveBulkUnitPrice() {
+  const changes = []
+  document.querySelectorAll('.up-input').forEach(inp => {
+    const taskId  = inp.dataset.taskId
+    const task    = STATE.tasks.find(t => t.id === taskId)
+    const oldPrice = task?.unit_price || 0
+    const newPrice = parseFloat(inp.value) || 0
+    if (oldPrice !== newPrice) changes.push({ taskId, newPrice })
+  })
+
+  if (!changes.length) { toast('Chưa có thay đổi nào', ''); return }
+
+  const btn = document.getElementById('btn-up-save')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span> Đang lưu...'
+  loading(true, `Đang lưu ${changes.length} đơn giá...`)
+
+  try {
+    for (const c of changes) {
+      const { error } = await sb.from('tasks')
+        .update({ unit_price: c.newPrice })
+        .eq('id', c.taskId)
+      if (error) throw error
+    }
+
+    await loadProjectData(STATE.currentProject.id)
+    closeModal()
+    navigate('wbs')
+    toast(`✅ Đã lưu ${changes.length} đơn giá`, 'success')
+  } catch(e) {
+    toast('Lỗi: ' + e.message, 'error')
+    console.error(e)
+  } finally {
+    loading(false)
+    if (btn) { btn.disabled = false; btn.innerHTML = '💾 Lưu đơn giá' }
   }
 }
