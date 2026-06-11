@@ -1180,8 +1180,8 @@ function openBulkUnitPrice() {
   `)
 
   const m = document.querySelector('.modal')
-  m.style.maxWidth  = '95vw'
-  m.style.width     = '95vw'
+  m.style.maxWidth  = '60vw'
+  m.style.width     = '60vw'
   m.style.maxHeight = '95vh'
 }
 
