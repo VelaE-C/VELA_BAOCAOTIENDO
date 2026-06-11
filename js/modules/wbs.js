@@ -80,10 +80,10 @@ function initWbs() {
             title="Chọn Key Task"
             style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:var(--gray5);flex-shrink:0;background:var(--gray2)"
             class="wbs-settings-btn">🔑</span>` : ''}
-          <span onclick="event.stopPropagation();editTaskDates('${t.id}')"
-            title="Sửa ngày KH"
+          ${!t.is_summary ? `<span onclick="event.stopPropagation();editTaskDates('${t.id}')"
+            title="Sửa ngày KH (chỉ task lá)"
             style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:var(--gray5);flex-shrink:0;background:var(--gray2)"
-            class="wbs-settings-btn">📅</span>
+            class="wbs-settings-btn">📅</span>` : ''}
           <span onclick="event.stopPropagation();renameTask('${t.id}','${t.name.replace(/'/g,"\\'")}' )"
             title="Đổi tên"
             style="opacity:0;font-size:12px;padding:2px 5px;border-radius:4px;cursor:pointer;color:var(--gray5);flex-shrink:0;background:var(--gray2)"
@@ -231,7 +231,7 @@ function taskUpdateRow(t) {
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
       ${statusBadge(t.status)}
-      <button class="btn btn-primary btn-sm" onclick="openUpdateModal('${t.id}')">Cập nhật</button>
+      ${!t.is_summary ? `<button class="btn btn-primary btn-sm" onclick="openUpdateModal('${t.id}')">Cập nhật</button>` : '<span style="font-size:11px;color:var(--gray4);font-style:italic">Tự tính từ con</span>'}
     </div>
   </div>`
 }
@@ -572,24 +572,30 @@ function openBulkReschedule() {
           ${t.kh_duration_days || '—'}
         </td>
         <td style="padding:4px 6px;text-align:center">
-          <input type="text" class="bulk-new-start form-input"
-            data-task-id="${t.id}"
-            style="padding:3px 6px;font-size:11px;width:90px;text-align:center"
-            placeholder="DD/MM/YYYY"
-            value="${t.kh_start ? fmtDMY(t.kh_start) : ''}"
-            data-iso="${t.kh_start||''}"
-            disabled
-            oninput="parseBulkDate(this)" onchange="recalcDuration(this)">
+          ${isSummary
+            ? `<span style="font-size:10px;color:var(--gray4);font-style:italic">Tự tính từ con</span>`
+            : `<input type="text" class="bulk-new-start form-input"
+                data-task-id="${t.id}"
+                style="padding:3px 6px;font-size:11px;width:90px;text-align:center"
+                placeholder="DD/MM/YYYY"
+                value="${t.kh_start ? fmtDMY(t.kh_start) : ''}"
+                data-iso="${t.kh_start||''}"
+                disabled
+                oninput="parseBulkDate(this)" onchange="recalcDuration(this)">`
+          }
         </td>
         <td style="padding:4px 6px;text-align:center">
-          <input type="text" class="bulk-new-finish form-input"
-            data-task-id="${t.id}"
-            style="padding:3px 6px;font-size:11px;width:90px;text-align:center"
-            placeholder="DD/MM/YYYY"
-            value="${t.kh_finish ? fmtDMY(t.kh_finish) : ''}"
-            data-iso="${t.kh_finish||''}"
-            disabled
-            oninput="parseBulkDate(this)" onchange="recalcDuration(this)">
+          ${isSummary
+            ? `<span style="font-size:10px;color:var(--gray4);font-style:italic"></span>`
+            : `<input type="text" class="bulk-new-finish form-input"
+                data-task-id="${t.id}"
+                style="padding:3px 6px;font-size:11px;width:90px;text-align:center"
+                placeholder="DD/MM/YYYY"
+                value="${t.kh_finish ? fmtDMY(t.kh_finish) : ''}"
+                data-iso="${t.kh_finish||''}"
+                disabled
+                oninput="parseBulkDate(this)" onchange="recalcDuration(this)">`
+          }
         </td>
         <td class="bulk-delta" data-task-id="${t.id}"
           style="padding:5px 8px;font-size:11px;text-align:center;color:var(--gray4)">—</td>
@@ -716,12 +722,13 @@ function bulkCbChange(cb) {
 function toggleBulkRow(cb, enabled) {
   const row = cb.closest('tr')
   if (!row) return
+  // Summary task không có input ngày — bỏ qua
+  if (cb.dataset.summary === 'true') return
   row.querySelectorAll('.bulk-new-start, .bulk-new-finish').forEach(inp => {
     inp.disabled = !enabled
     if (enabled) inp.style.background = 'white'
     else inp.style.background = 'var(--gray1)'
   })
-  // Tính delta khi enable
   if (enabled) calcRowDelta(row)
 }
 
@@ -748,6 +755,8 @@ function applyBulkDelta() {
   document.querySelectorAll('.bulk-cb:checked').forEach(cb => {
     const row   = cb.closest('tr')
     if (!row) return
+    // Bỏ qua summary task — ngày tự tính từ con
+    if (cb.dataset.summary === 'true') return
     const oldStart  = row.dataset.start
     const oldFinish = row.dataset.finish
 
@@ -780,9 +789,14 @@ function resetBulkDates() {
 
 function shiftDate(dateStr, days) {
   if (!dateStr) return ''
-  const d = new Date(dateStr)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  // Parse ISO string trực tiếp tránh timezone offset
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m-1, d)
+  date.setDate(date.getDate() + days)
+  const yy = date.getFullYear()
+  const mm = String(date.getMonth()+1).padStart(2,'0')
+  const dd = String(date.getDate()).padStart(2,'0')
+  return `${yy}-${mm}-${dd}`
 }
 
 function calcRowDelta(row) {
@@ -938,13 +952,21 @@ async function saveBulkReschedule() {
         c.wbs_code.split('.').length === parent.wbs_code.split('.').length + 1
       )
       if (!children.length) return
+      // Sort string ISO YYYY-MM-DD trực tiếp — tránh timezone bug
       const starts  = children.map(c => c.kh_start).filter(Boolean).sort()
       const finishes = children.map(c => c.kh_finish).filter(Boolean).sort()
       const newStart  = starts[0] || null
       const newFinish = finishes[finishes.length-1] || null
       if (newStart !== parent.kh_start || newFinish !== parent.kh_finish) {
-        const dur = newStart && newFinish
-          ? Math.round((new Date(newFinish)-new Date(newStart))/86400000) : null
+        // Tính duration bằng cách parse ISO string tránh timezone offset
+        let dur = null
+        if (newStart && newFinish) {
+          const [sy,sm,sd] = newStart.split('-').map(Number)
+          const [ey,em,ed] = newFinish.split('-').map(Number)
+          const s = new Date(sy,sm-1,sd)
+          const e = new Date(ey,em-1,ed)
+          dur = Math.round((e - s) / 86400000)
+        }
         parentUpdates.push({ id: parent.id, kh_start: newStart, kh_finish: newFinish, kh_duration_days: dur })
         // Update local để vòng lặp tiếp theo dùng đúng
         parent.kh_start  = newStart
