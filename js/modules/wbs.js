@@ -13,6 +13,7 @@ function wbs() {
       <button class="btn btn-secondary btn-sm" onclick="collapseAll()">Thu gọn tất cả</button>
       ${STATE.role !== 'updater' ? `
         <button class="btn btn-secondary btn-sm" onclick="recomputeParentDates('${STATE.currentProject?.id}')">🔄 Sync ngày KH cha</button>
+        <button class="btn btn-secondary btn-sm" onclick="openBulkReschedule()" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A">📅 Điều chỉnh tiến độ</button>
         <button class="btn btn-primary btn-sm" onclick="openAddTaskModal()">➕ Thêm công tác</button>
       ` : ''}
     </div>
@@ -459,49 +460,34 @@ async function saveProgress(taskId) {
     })
     if (progErr) throw progErr
 
-// Upload photos với nén ảnh
+    // Upload photos
     if (pendingPhotos.length) {
-      loading(true, `Đang nén và upload ${pendingPhotos.length} ảnh...`)
+      loading(true, `Đang upload ${pendingPhotos.length} ảnh...`)
       for (const file of pendingPhotos) {
-        try {
-          // Nén ảnh trước khi upload
-          let uploadFile = file
-          if (file.type.startsWith('image/')) {
-            const options = {
-              maxSizeMB: 0.3,
-              maxWidthOrHeight: 1280,
-              useWebWorker: true,
-              fileType: 'image/jpeg',
-            }
-            uploadFile = await imageCompression(file, options)
-          }
-
-          const ext  = uploadFile.type === 'image/jpeg' ? 'jpg' : file.name.split('.').pop()
-          const path = `${STATE.currentProject.id}/${taskId}/${Date.now()}.${ext}`
-          const arrayBuffer = await uploadFile.arrayBuffer()
-          const { data: upData, error: upErr } = await sb.storage
-            .from(CFG.STORAGE_BUCKET).upload(path, arrayBuffer, {
-              upsert: true,
-              contentType: uploadFile.type || 'image/jpeg',
-            })
-          if (upErr) { console.error('Upload error:', upErr); continue }
-
-          const { data: urlData } = sb.storage.from(CFG.STORAGE_BUCKET).getPublicUrl(path)
-          const photoUrl = urlData?.publicUrl || `${CFG.SUPABASE_URL}/storage/v1/object/public/${CFG.STORAGE_BUCKET}/${path}`
-          await sb.from('task_photos').insert({
-            task_id:       taskId,
-            project_id:    STATE.currentProject.id,
-            week_number:   getISOWeek(now),
-            year:          now.getFullYear(),
-            photo_url:     photoUrl,
-            caption:       path,
-            uploaded_by:   STATE.user.email,
-            taken_at:      now.toISOString().slice(0,10),
+        const ext  = file.name.split('.').pop()
+        const path = `${STATE.currentProject.id}/${taskId}/${Date.now()}.${ext}`
+        // Đọc file thành ArrayBuffer để upload raw binary, tránh multipart/form-data
+        const arrayBuffer = await file.arrayBuffer()
+        const { data: upData, error: upErr } = await sb.storage
+          .from(CFG.STORAGE_BUCKET).upload(path, arrayBuffer, {
+            upsert: true,
+            contentType: file.type || 'image/jpeg',
           })
-        } catch(photoErr) {
-          console.error('Photo upload failed:', photoErr)
-          toast('Lỗi upload ảnh: ' + photoErr.message, 'error')
-        }
+        if (upErr) { console.error('Upload error:', upErr); continue }
+
+        // Lưu path thay vì URL — generate signed URL khi hiển thị
+        const { data: urlData } = sb.storage.from(CFG.STORAGE_BUCKET).getPublicUrl(path)
+        const photoUrl = urlData?.publicUrl || `${CFG.SUPABASE_URL}/storage/v1/object/public/${CFG.STORAGE_BUCKET}/${path}`
+        await sb.from('task_photos').insert({
+          task_id:       taskId,
+          project_id:    STATE.currentProject.id,
+          week_number:   getISOWeek(now),
+          year:          now.getFullYear(),
+          photo_url:     photoUrl,
+          caption:       path,  // store path in caption for signed URL fallback
+          uploaded_by:   STATE.user.email,
+          taken_at:      now.toISOString().slice(0,10),
+        })
       }
       pendingPhotos = []
     }
@@ -512,5 +498,376 @@ async function saveProgress(taskId) {
     toast('Lỗi: ' + e.message, 'error')
   } finally {
     loading(false)
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// BULK RESCHEDULE — Điều chỉnh tiến độ hàng loạt
+// ═══════════════════════════════════════════════════════════
+
+function openBulkReschedule() {
+  if (!STATE.currentProject) { toast('Chưa có dự án', 'error'); return }
+
+  const tasks = STATE.tasks
+  if (!tasks.length) { toast('Chưa có dữ liệu công tác', 'error'); return }
+
+  // Build tree rows cho bảng
+  const rows = tasks.map(t => {
+    const indent = (t.outline_level - 1) * 16
+    const isSummary = t.is_summary
+    return `
+      <tr data-task-id="${t.id}"
+          data-level="${t.outline_level}"
+          data-wbs="${t.wbs_code}"
+          data-summary="${isSummary}"
+          data-start="${t.kh_start||''}"
+          data-finish="${t.kh_finish||''}"
+          style="background:${isSummary?'var(--gray1)':'white'}">
+        <td style="padding:5px 8px;text-align:center">
+          <input type="checkbox" class="bulk-cb" data-task-id="${t.id}"
+            data-summary="${isSummary}" data-wbs="${t.wbs_code}"
+            onchange="bulkCbChange(this)">
+        </td>
+        <td style="padding:5px 8px;font-size:12px;padding-left:${8+indent}px;
+          font-weight:${isSummary?'600':'400'};color:${isSummary?'var(--navy)':'var(--gray7)'}">
+          ${isSummary?'▼ ':''}${t.name}
+        </td>
+        <td style="padding:5px 8px;font-size:11px;color:var(--gray5);text-align:center">
+          ${t.kh_start ? new Date(t.kh_start).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
+        </td>
+        <td style="padding:5px 8px;font-size:11px;color:var(--gray5);text-align:center">
+          ${t.kh_finish ? new Date(t.kh_finish).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
+        </td>
+        <td style="padding:4px 6px;text-align:center">
+          <input type="date" class="bulk-new-start form-input"
+            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:130px"
+            value="${t.kh_start||''}" disabled>
+        </td>
+        <td style="padding:4px 6px;text-align:center">
+          <input type="date" class="bulk-new-finish form-input"
+            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:130px"
+            value="${t.kh_finish||''}" disabled>
+        </td>
+        <td class="bulk-delta" data-task-id="${t.id}"
+          style="padding:5px 8px;font-size:11px;text-align:center;color:var(--gray4)">—</td>
+      </tr>`
+  }).join('')
+
+  openModal('📅 Điều chỉnh tiến độ hàng loạt', `
+    <div style="min-height:60vh">
+      <!-- Bước 1: Thông tin đợt điều chỉnh -->
+      <div style="background:var(--lblue);border-radius:var(--radius);padding:14px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:var(--blue);margin-bottom:10px">
+          📋 Bước 1: Thông tin đợt điều chỉnh
+        </div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Tên đợt điều chỉnh <span style="color:var(--red)">*</span></label>
+            <input class="form-input" id="bulk-revision-name"
+              placeholder="VD: Lần 1 - CĐT cập nhật thiết kế">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Ngày hiệu lực</label>
+            <input class="form-input" id="bulk-effective-date" type="date"
+              value="${new Date().toISOString().slice(0,10)}">
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:10px;margin-bottom:0">
+          <label class="form-label">Lý do điều chỉnh <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="bulk-reason"
+            placeholder="VD: CĐT yêu cầu đẩy nhanh, mặt bằng bàn giao trễ...">
+        </div>
+      </div>
+
+      <!-- Bước 2: Dịch ngày chung -->
+      <div style="background:#FEFCE8;border:1px solid #FDE68A;border-radius:var(--radius);padding:12px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#92400E;margin-bottom:8px">
+          ⚡ Bước 2: Dịch ngày nhanh (áp dụng cho tất cả task được chọn)
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:12px;color:var(--gray6)">Dịch</label>
+            <input type="number" id="bulk-delta-days" class="form-input"
+              style="width:80px;padding:6px 8px" value="0" min="-999" max="999">
+            <label style="font-size:12px;color:var(--gray6)">ngày</label>
+            <span style="font-size:11px;color:var(--gray4)">(âm = sớm hơn, dương = trễ hơn)</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="applyBulkDelta()"
+            style="background:#FEF3C7;color:#92400E;border-color:#FDE68A">
+            ▶ Áp dụng cho task đã chọn
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="resetBulkDates()"
+            style="font-size:11px">↩ Reset về cũ</button>
+        </div>
+      </div>
+
+      <!-- Bước 3: Bảng tasks -->
+      <div style="font-size:13px;font-weight:600;color:var(--gray7);margin-bottom:8px;
+        display:flex;justify-content:space-between;align-items:center">
+        <span>📋 Bước 3: Chọn và chỉnh sửa từng công tác</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" onclick="bulkSelectAll(true)">Chọn tất cả</button>
+          <button class="btn btn-secondary btn-sm" onclick="bulkSelectAll(false)">Bỏ chọn</button>
+          <span id="bulk-selected-count" style="font-size:11px;color:var(--blue);padding:4px 8px;
+            background:var(--lblue);border-radius:6px;font-weight:500">0 task đã chọn</span>
+        </div>
+      </div>
+      <div style="max-height:320px;overflow-y:auto;border:1px solid var(--gray2);border-radius:var(--radius)">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:1">
+              <th style="padding:7px 8px;width:32px"></th>
+              <th style="padding:7px 8px;text-align:left">Hạng mục / Công tác</th>
+              <th style="padding:7px 8px;text-align:center;width:90px">KH BD cũ</th>
+              <th style="padding:7px 8px;text-align:center;width:90px">KH KT cũ</th>
+              <th style="padding:7px 8px;text-align:center;width:140px">KH BD mới</th>
+              <th style="padding:7px 8px;text-align:center;width:140px">KH KT mới</th>
+              <th style="padding:7px 8px;text-align:center;width:60px">Δ ngày</th>
+            </tr>
+          </thead>
+          <tbody id="bulk-task-tbody">${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `, `
+    <div style="display:flex;align-items:center;gap:8px;width:100%;justify-content:space-between">
+      <span id="bulk-preview-text" style="font-size:12px;color:var(--gray5)">
+        Chưa có thay đổi nào
+      </span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" id="btn-bulk-save" onclick="saveBulkReschedule()">
+          💾 Lưu điều chỉnh
+        </button>
+      </div>
+    </div>
+  `)
+
+  // Modal lớn hơn
+  document.querySelector('.modal').style.maxWidth = '900px'
+  document.querySelector('.modal').style.maxHeight = '92vh'
+  updateBulkPreview()
+}
+
+// ── Checkbox logic: chọn cha → chọn con ─────────────────────
+function bulkCbChange(cb) {
+  const taskId  = cb.dataset.taskId
+  const wbsCode = cb.dataset.wbs
+  const checked = cb.checked
+
+  // Nếu là summary → chọn/bỏ tất cả con
+  if (cb.dataset.summary === 'true') {
+    document.querySelectorAll('.bulk-cb').forEach(c => {
+      if (c.dataset.wbs !== wbsCode && c.dataset.wbs.startsWith(wbsCode + '.')) {
+        c.checked = checked
+        toggleBulkRow(c, checked)
+      }
+    })
+  }
+  toggleBulkRow(cb, checked)
+  updateBulkCounter()
+  updateBulkPreview()
+}
+
+function toggleBulkRow(cb, enabled) {
+  const row = cb.closest('tr')
+  if (!row) return
+  row.querySelectorAll('.bulk-new-start, .bulk-new-finish').forEach(inp => {
+    inp.disabled = !enabled
+    if (enabled) inp.style.background = 'white'
+    else inp.style.background = 'var(--gray1)'
+  })
+  // Tính delta khi enable
+  if (enabled) calcRowDelta(row)
+}
+
+function bulkSelectAll(val) {
+  document.querySelectorAll('.bulk-cb').forEach(cb => {
+    cb.checked = val
+    toggleBulkRow(cb, val)
+  })
+  updateBulkCounter()
+  updateBulkPreview()
+}
+
+function updateBulkCounter() {
+  const count = document.querySelectorAll('.bulk-cb:checked').length
+  const el = document.getElementById('bulk-selected-count')
+  if (el) el.textContent = count + ' task đã chọn'
+}
+
+// ── Áp dụng delta ngày ─────────────────────────────────────
+function applyBulkDelta() {
+  const delta = parseInt(document.getElementById('bulk-delta-days')?.value || '0')
+  if (isNaN(delta) || delta === 0) { toast('Nhập số ngày cần dịch', ''); return }
+
+  document.querySelectorAll('.bulk-cb:checked').forEach(cb => {
+    const row   = cb.closest('tr')
+    if (!row) return
+    const oldStart  = row.dataset.start
+    const oldFinish = row.dataset.finish
+
+    const newStart  = oldStart  ? shiftDate(oldStart,  delta) : ''
+    const newFinish = oldFinish ? shiftDate(oldFinish, delta) : ''
+
+    const startInp  = row.querySelector('.bulk-new-start')
+    const finishInp = row.querySelector('.bulk-new-finish')
+    if (startInp)  startInp.value  = newStart
+    if (finishInp) finishInp.value = newFinish
+    calcRowDelta(row)
+  })
+  updateBulkPreview()
+  toast(`Đã dịch ${delta > 0 ? '+' : ''}${delta} ngày cho ${document.querySelectorAll('.bulk-cb:checked').length} task`, 'success')
+}
+
+function resetBulkDates() {
+  document.querySelectorAll('#bulk-task-tbody tr').forEach(row => {
+    const oldStart  = row.dataset.start
+    const oldFinish = row.dataset.finish
+    const startInp  = row.querySelector('.bulk-new-start')
+    const finishInp = row.querySelector('.bulk-new-finish')
+    if (startInp)  startInp.value  = oldStart  || ''
+    if (finishInp) finishInp.value = oldFinish || ''
+    const deltaEl = row.querySelector('.bulk-delta')
+    if (deltaEl) { deltaEl.textContent = '—'; deltaEl.style.color = 'var(--gray4)' }
+  })
+  updateBulkPreview()
+}
+
+function shiftDate(dateStr, days) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function calcRowDelta(row) {
+  const oldFinish = row.dataset.finish
+  const finishInp = row.querySelector('.bulk-new-finish')
+  const deltaEl   = row.querySelector('.bulk-delta')
+  if (!deltaEl || !finishInp) return
+
+  const newFinish = finishInp.value
+  if (!oldFinish || !newFinish) { deltaEl.textContent = '—'; return }
+
+  const delta = Math.round((new Date(newFinish) - new Date(oldFinish)) / 86400000)
+  if (delta === 0) {
+    deltaEl.textContent = '—'
+    deltaEl.style.color = 'var(--gray4)'
+  } else {
+    deltaEl.textContent = (delta > 0 ? '+' : '') + delta + 'd'
+    deltaEl.style.color = delta > 0 ? 'var(--red)' : 'var(--green)'
+    deltaEl.style.fontWeight = '600'
+  }
+}
+
+function updateBulkPreview() {
+  const el = document.getElementById('bulk-preview-text')
+  if (!el) return
+  let changed = 0
+  document.querySelectorAll('.bulk-cb:checked').forEach(cb => {
+    const row = cb.closest('tr')
+    if (!row) return
+    const oldStart  = row.dataset.start
+    const oldFinish = row.dataset.finish
+    const newStart  = row.querySelector('.bulk-new-start')?.value
+    const newFinish = row.querySelector('.bulk-new-finish')?.value
+    if (newStart !== oldStart || newFinish !== oldFinish) changed++
+  })
+  el.textContent = changed > 0
+    ? `✏️ ${changed} công tác sẽ được cập nhật ngày KH`
+    : 'Chưa có thay đổi nào'
+  el.style.color = changed > 0 ? 'var(--blue)' : 'var(--gray5)'
+}
+
+// ── Lưu toàn bộ điều chỉnh ─────────────────────────────────
+async function saveBulkReschedule() {
+  const revName   = document.getElementById('bulk-revision-name')?.value.trim()
+  const reason    = document.getElementById('bulk-reason')?.value.trim()
+  const effDate   = document.getElementById('bulk-effective-date')?.value
+  const deltaDays = parseInt(document.getElementById('bulk-delta-days')?.value || '0')
+
+  if (!revName) { toast('Vui lòng nhập tên đợt điều chỉnh', 'error'); return }
+  if (!reason)  { toast('Vui lòng nhập lý do điều chỉnh', 'error');   return }
+
+  // Collect changes
+  const changes = []
+  document.querySelectorAll('.bulk-cb:checked').forEach(cb => {
+    const row       = cb.closest('tr')
+    if (!row) return
+    const taskId    = cb.dataset.taskId
+    const oldStart  = row.dataset.start  || null
+    const oldFinish = row.dataset.finish || null
+    const newStart  = row.querySelector('.bulk-new-start')?.value  || null
+    const newFinish = row.querySelector('.bulk-new-finish')?.value || null
+    if (newStart !== oldStart || newFinish !== oldFinish) {
+      changes.push({ taskId, oldStart, oldFinish, newStart, newFinish })
+    }
+  })
+
+  if (!changes.length) { toast('Chưa có thay đổi nào để lưu', ''); return }
+
+  const btn = document.getElementById('btn-bulk-save')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span> Đang lưu...'
+  loading(true, `Đang lưu ${changes.length} thay đổi...`)
+
+  try {
+    const proj = STATE.currentProject
+
+    // 1. Tạo revision record
+    const { data: rev, error: revErr } = await sb.from('schedule_revisions').insert({
+      project_id:     proj.id,
+      revision_name:  revName,
+      reason,
+      effective_date: effDate || null,
+      delta_days:     isNaN(deltaDays) ? null : deltaDays,
+      affected_count: changes.length,
+      created_by:     STATE.user.email,
+    }).select().single()
+    if (revErr) throw revErr
+
+    // 2. Lưu baseline_log cho từng task + update tasks table
+    for (const c of changes) {
+      // Lưu lịch sử
+      await sb.from('baseline_log').insert({
+        task_id:      c.taskId,
+        project_id:   proj.id,
+        changed_by:   STATE.user.email,
+        old_start:    c.oldStart,
+        old_finish:   c.oldFinish,
+        new_start:    c.newStart,
+        new_finish:   c.newFinish,
+        reason,
+        revision_id:  rev.id,
+      })
+
+      // Tính lại duration
+      let newDur = null
+      if (c.newStart && c.newFinish) {
+        newDur = Math.round((new Date(c.newFinish) - new Date(c.newStart)) / 86400000)
+      }
+
+      // Update task
+      await sb.from('tasks').update({
+        kh_start:          c.newStart,
+        kh_finish:         c.newFinish,
+        kh_duration_days:  newDur,
+      }).eq('id', c.taskId)
+    }
+
+    // 3. Reload và đóng modal
+    await loadProjectData(proj.id)
+    closeModal()
+    navigate('wbs')
+    toast(`✅ Đã lưu đợt điều chỉnh "${revName}" — ${changes.length} công tác`, 'success')
+
+  } catch(e) {
+    toast('Lỗi: ' + e.message, 'error')
+    console.error(e)
+  } finally {
+    loading(false)
+    if (btn) { btn.disabled = false; btn.innerHTML = '💾 Lưu điều chỉnh' }
   }
 }
