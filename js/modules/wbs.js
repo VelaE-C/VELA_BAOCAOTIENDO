@@ -506,6 +506,35 @@ async function saveProgress(taskId) {
 // BULK RESCHEDULE — Điều chỉnh tiến độ hàng loạt
 // ═══════════════════════════════════════════════════════════
 
+// ── Helpers format ngày DD/MM/YYYY ──────────────────────────
+function fmtDMY(isoStr) {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  if (isNaN(d)) return ''
+  return d.toLocaleDateString('vi-VN', {day:'2-digit', month:'2-digit', year:'numeric'})
+}
+
+function parseDMYtoISO(str) {
+  // Chấp nhận DD/MM/YYYY hoặc DD-MM-YYYY
+  if (!str) return ''
+  const parts = str.split(/[/\-]/)
+  if (parts.length !== 3) return ''
+  const [d, m, y] = parts
+  if (!d || !m || !y || y.length < 4) return ''
+  const iso = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`
+  const date = new Date(iso)
+  return isNaN(date) ? '' : iso
+}
+
+function parseBulkDate(inp) {
+  const iso = parseDMYtoISO(inp.value)
+  inp.dataset.iso = iso
+  // Highlight đỏ nếu không parse được (và có nội dung)
+  inp.style.borderColor = (!iso && inp.value.length > 0) ? 'var(--red)' : ''
+  const row = inp.closest('tr')
+  if (row) { calcRowDelta(row); updateBulkPreview() }
+}
+
 function openBulkReschedule() {
   if (!STATE.currentProject) { toast('Chưa có dự án', 'error'); return }
 
@@ -543,16 +572,24 @@ function openBulkReschedule() {
           ${t.kh_duration_days || '—'}
         </td>
         <td style="padding:4px 6px;text-align:center">
-          <input type="date" class="bulk-new-start form-input"
-            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:120px"
-            value="${t.kh_start||''}" disabled
-            onchange="recalcDuration(this)">
+          <input type="text" class="bulk-new-start form-input"
+            data-task-id="${t.id}"
+            style="padding:3px 6px;font-size:11px;width:90px;text-align:center"
+            placeholder="DD/MM/YYYY"
+            value="${t.kh_start ? fmtDMY(t.kh_start) : ''}"
+            data-iso="${t.kh_start||''}"
+            disabled
+            oninput="parseBulkDate(this)" onchange="recalcDuration(this)">
         </td>
         <td style="padding:4px 6px;text-align:center">
-          <input type="date" class="bulk-new-finish form-input"
-            data-task-id="${t.id}" style="padding:3px 6px;font-size:11px;width:120px"
-            value="${t.kh_finish||''}" disabled
-            onchange="recalcDuration(this)">
+          <input type="text" class="bulk-new-finish form-input"
+            data-task-id="${t.id}"
+            style="padding:3px 6px;font-size:11px;width:90px;text-align:center"
+            placeholder="DD/MM/YYYY"
+            value="${t.kh_finish ? fmtDMY(t.kh_finish) : ''}"
+            data-iso="${t.kh_finish||''}"
+            disabled
+            oninput="parseBulkDate(this)" onchange="recalcDuration(this)">
         </td>
         <td class="bulk-delta" data-task-id="${t.id}"
           style="padding:5px 8px;font-size:11px;text-align:center;color:var(--gray4)">—</td>
@@ -719,8 +756,8 @@ function applyBulkDelta() {
 
     const startInp  = row.querySelector('.bulk-new-start')
     const finishInp = row.querySelector('.bulk-new-finish')
-    if (startInp)  startInp.value  = newStart
-    if (finishInp) finishInp.value = newFinish
+    if (startInp)  { startInp.value = fmtDMY(newStart);  startInp.dataset.iso = newStart }
+    if (finishInp) { finishInp.value = fmtDMY(newFinish); finishInp.dataset.iso = newFinish }
     calcRowDelta(row)
   })
   updateBulkPreview()
@@ -733,8 +770,8 @@ function resetBulkDates() {
     const oldFinish = row.dataset.finish
     const startInp  = row.querySelector('.bulk-new-start')
     const finishInp = row.querySelector('.bulk-new-finish')
-    if (startInp)  startInp.value  = oldStart  || ''
-    if (finishInp) finishInp.value = oldFinish || ''
+    if (startInp)  { startInp.value = fmtDMY(oldStart);  startInp.dataset.iso = oldStart  || '' }
+    if (finishInp) { finishInp.value = fmtDMY(oldFinish); finishInp.dataset.iso = oldFinish || '' }
     const deltaEl = row.querySelector('.bulk-delta')
     if (deltaEl) { deltaEl.textContent = '—'; deltaEl.style.color = 'var(--gray4)' }
   })
@@ -754,7 +791,7 @@ function calcRowDelta(row) {
   const deltaEl   = row.querySelector('.bulk-delta')
   if (!deltaEl || !finishInp) return
 
-  const newFinish = finishInp.value
+  const newFinish = finishInp.dataset.iso || finishInp.value
   if (!oldFinish || !newFinish) { deltaEl.textContent = '—'; return }
 
   const delta = Math.round((new Date(newFinish) - new Date(oldFinish)) / 86400000)
@@ -824,8 +861,8 @@ async function saveBulkReschedule() {
     const taskId    = cb.dataset.taskId
     const oldStart  = row.dataset.start  || null
     const oldFinish = row.dataset.finish || null
-    const newStart  = row.querySelector('.bulk-new-start')?.value  || null
-    const newFinish = row.querySelector('.bulk-new-finish')?.value || null
+    const newStart  = row.querySelector('.bulk-new-start')?.dataset.iso  || null
+    const newFinish = row.querySelector('.bulk-new-finish')?.dataset.iso || null
     if (newStart !== oldStart || newFinish !== oldFinish) {
       changes.push({ taskId, oldStart, oldFinish, newStart, newFinish })
     }
