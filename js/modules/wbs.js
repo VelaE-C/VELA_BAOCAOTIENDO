@@ -919,11 +919,51 @@ async function saveBulkReschedule() {
       }).eq('id', c.taskId)
     }
 
-    // 3. Reload và đóng modal
+    // 3. Tính lại ngày cha từ min/max ngày con
+    loading(true, 'Đang cập nhật ngày hạng mục cha...')
+    const allTasks = (await sb.from('tasks')
+      .select('id,wbs_code,outline_level,kh_start,kh_finish,is_summary')
+      .eq('project_id', proj.id)
+      .order('sort_order')).data || []
+
+    // Bottom-up: tính min start và max finish cho summary tasks
+    const sorted = [...allTasks].sort((a,b) => b.outline_level - a.outline_level)
+    const parentUpdates = []
+
+    sorted.forEach(parent => {
+      if (!parent.is_summary) return
+      const children = allTasks.filter(c =>
+        c.wbs_code && parent.wbs_code &&
+        c.wbs_code.startsWith(parent.wbs_code + '.') &&
+        c.wbs_code.split('.').length === parent.wbs_code.split('.').length + 1
+      )
+      if (!children.length) return
+      const starts  = children.map(c => c.kh_start).filter(Boolean).sort()
+      const finishes = children.map(c => c.kh_finish).filter(Boolean).sort()
+      const newStart  = starts[0] || null
+      const newFinish = finishes[finishes.length-1] || null
+      if (newStart !== parent.kh_start || newFinish !== parent.kh_finish) {
+        const dur = newStart && newFinish
+          ? Math.round((new Date(newFinish)-new Date(newStart))/86400000) : null
+        parentUpdates.push({ id: parent.id, kh_start: newStart, kh_finish: newFinish, kh_duration_days: dur })
+        // Update local để vòng lặp tiếp theo dùng đúng
+        parent.kh_start  = newStart
+        parent.kh_finish = newFinish
+      }
+    })
+
+    for (const upd of parentUpdates) {
+      await sb.from('tasks').update({
+        kh_start: upd.kh_start, kh_finish: upd.kh_finish, kh_duration_days: upd.kh_duration_days
+      }).eq('id', upd.id)
+    }
+
+    // 4. Reload và đóng modal
     await loadProjectData(proj.id)
     closeModal()
     navigate('wbs')
-    toast(`✅ Đã lưu đợt điều chỉnh "${revName}" — ${changes.length} công tác`, 'success')
+    const parentMsg = parentUpdates.length > 0 ? ` · ${parentUpdates.length} hạng mục cha đã cập nhật` : ''
+    toast(`✅ Đã lưu đợt điều chỉnh "${revName}" — ${changes.length} công tác${parentMsg}`, 'success')
 
   } catch(e) {
     toast('Lỗi: ' + e.message, 'error')
