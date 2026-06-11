@@ -1104,7 +1104,7 @@ function openBulkUnitPrice() {
     return `
       <tr data-task-id="${t.id}" style="border-bottom:0.5px solid var(--gray2)">
         <td style="padding:5px 8px;font-size:12px;padding-left:${8+indent}px;
-          color:var(--gray7);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+          color:var(--gray7);max-width:400px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
           title="${t.name}">
           ${t.name}
         </td>
@@ -1116,7 +1116,7 @@ function openBulkUnitPrice() {
             <input type="number" class="up-input form-input"
               data-task-id="${t.id}"
               data-qty="${qty||1}"
-              style="padding:5px 10px;font-size:13px;width:120px;text-align:right;font-weight:500"
+              style="padding:6px 12px;font-size:15px;width:200px;text-align:right;font-weight:500"
               value="${t.unit_price||''}"
               placeholder="0"
               min="0" step="1000"
@@ -1148,14 +1148,14 @@ function openBulkUnitPrice() {
         </div>
       </div>
 
-      <div style="max-height:400px;overflow-y:auto;border:1px solid var(--gray2);border-radius:var(--radius)">
+      <div style="max-height:calc(95vh - 280px);overflow-y:auto;border:1px solid var(--gray2);border-radius:var(--radius)">
         <table style="width:100%;border-collapse:collapse">
           <thead>
             <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:1">
               <th style="padding:7px 8px;text-align:left">Hạng mục / Công tác</th>
               <th style="padding:7px 8px;text-align:center;width:100px">Khối lượng KH</th>
-              <th style="padding:7px 8px;text-align:center;width:180px">Đơn giá (VND)</th>
-              <th style="padding:7px 8px;text-align:right;width:140px">Giá trị HĐ (VND)</th>
+              <th style="padding:7px 8px;text-align:center;width:260px">Đơn giá (VND)</th>
+              <th style="padding:7px 8px;text-align:right;width:180px">Giá trị HĐ (VND)</th>
             </tr>
           </thead>
           <tbody id="up-tbody">${rows}</tbody>
@@ -1179,8 +1179,10 @@ function openBulkUnitPrice() {
     </div>
   `)
 
-  document.querySelector('.modal').style.maxWidth = '700px'
-  document.querySelector('.modal').style.maxHeight = '88vh'
+  const m = document.querySelector('.modal')
+  m.style.maxWidth  = '95vw'
+  m.style.width     = '95vw'
+  m.style.maxHeight = '95vh'
 }
 
 function updateUPRow(inp) {
