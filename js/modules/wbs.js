@@ -1043,8 +1043,25 @@ async function saveBulkReschedule() {
 function openBulkUnitPrice() {
   if (!STATE.currentProject) { toast('Chưa có dự án', 'error'); return }
 
-  const allTasks = STATE.tasks
+  // STATE.tasks đã sort theo sort_order — giữ nguyên thứ tự
+  const allTasks = [...STATE.tasks]
   if (!allTasks.length) { toast('Chưa có công tác nào', 'error'); return }
+
+  // Tính rollup _contractValue TRƯỚC khi build rows
+  allTasks.sort((a,b) => b.outline_level - a.outline_level).forEach(t => {
+    if (!t.is_summary) {
+      t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
+      return
+    }
+    const children = allTasks.filter(c =>
+      c.wbs_code && t.wbs_code &&
+      c.wbs_code.startsWith(t.wbs_code + '.') &&
+      c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
+    )
+    t._contractValue = children.reduce((s,c) => s + (c._contractValue||0), 0)
+  })
+  // Khôi phục sort_order gốc
+  allTasks.sort((a,b) => (a.sort_order||0) - (b.sort_order||0))
 
   // Tính tổng hiện tại (chỉ từ task lá)
   const currentTotal = allTasks.filter(t=>!t.is_summary).reduce((s,t) => {
@@ -1062,17 +1079,24 @@ function openBulkUnitPrice() {
     const fmtM = v => v > 0 ? v.toFixed(0) + ' M' : ''
 
     if (t.is_summary) {
-      // Task cha: hiển thị như header, không nhập được
+      const bgColor = t.outline_level===1 ? '#1A2B4A'
+                    : t.outline_level===2 ? '#2563EB'
+                    : t.outline_level===3 ? '#EEF2FF'
+                    : '#F1F5F9'
+      const txtColor = t.outline_level<=2 ? 'white'
+                     : t.outline_level===3 ? '#1E40AF'
+                     : 'var(--navy)'
+      const valColor = t.outline_level<=2 ? '#93C5FD'
+                     : t.outline_level===3 ? '#1E40AF'
+                     : 'var(--navy)'
       return `
-        <tr style="background:${t.outline_level===1?'#1A2B4A':t.outline_level===2?'#EEF2FF':'var(--gray1)'}">
+        <tr style="background:${bgColor}">
           <td colspan="3" style="padding:6px 8px;padding-left:${8+indent}px;
-            font-size:12px;font-weight:600;
-            color:${t.outline_level<=2?'white':'var(--navy)'}"
+            font-size:12px;font-weight:600;color:${txtColor}"
             title="${t.name}">
             ▸ ${t.name}
           </td>
-          <td style="padding:6px 8px;text-align:right;font-size:12px;font-weight:600;
-            color:${t.outline_level<=2?'#93C5FD':'var(--navy)'}">
+          <td style="padding:6px 8px;text-align:right;font-size:12px;font-weight:600;color:${valColor}">
             ${contractVal>0 ? fmtM(contractVal) : ''}
           </td>
         </tr>`
