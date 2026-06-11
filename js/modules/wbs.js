@@ -27,12 +27,12 @@ function wbs() {
       <div class="wbs-kh-end">KH Kết thúc</div>
       <div class="wbs-dur">Ngày KH</div>
       <div class="wbs-pct">Tiến độ</div>
-      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ</div>
-      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH</div>
+      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
+      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
       <div class="wbs-status" style="width:90px">Đơn vị/KH</div>
       <div class="wbs-status">Trạng thái</div>
-      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ</div>
-      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH</div>
+      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
+      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
     </div>
     <div class="wbs-tree" id="wbs-container"></div>
   </div>`
@@ -143,8 +143,7 @@ function initWbs() {
         const earnedVal = cv * (t.display_pct||0) / 100
         const fmtM = v => {
           if (!v || v === 0) return '—'
-          if (v >= 1000) return (v/1000).toFixed(1) + 'T'
-          return v.toFixed(0) + 'M'
+          return v.toLocaleString('vi-VN') + ' ₫'
         }
         return `
           <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
@@ -380,7 +379,7 @@ function openUpdateModal(taskId) {
             document.getElementById('pct-bar-fill').style.width=v+'%';
             document.getElementById('pct-bar-fill').style.background=v===100?'var(--green)':v<${curPct}?'var(--red)':'var(--blue)';
           "
-          style="flex:1;accent-color:var(--blue)">
+          style="flex:1;accent-color:var(--blue);height:6px">
         <input type="number" id="pct-number" min="0" max="100" value="${curPct}"
           oninput="
             const v=Math.min(100,Math.max(0,parseInt(this.value)||0));
@@ -389,7 +388,7 @@ function openUpdateModal(taskId) {
             document.getElementById('pct-display').textContent=v+'%';
             document.getElementById('pct-bar-fill').style.width=v+'%';
           "
-          style="width:64px;padding:6px 8px;border:1px solid var(--gray3);border-radius:6px;font-size:14px;font-weight:600;text-align:center">
+          style="width:80px;padding:8px 10px;border:2px solid var(--gray3);border-radius:6px;font-size:18px;font-weight:700;text-align:center;color:var(--navy)">
         <span style="font-size:13px;color:var(--gray5)">%</span>
       </div>
       <div class="pct-bar" style="height:8px;margin-top:8px;border-radius:4px">
@@ -1076,7 +1075,7 @@ function openBulkUnitPrice() {
     const contractVal = t.is_summary
       ? (t._contractValue || 0)
       : (t.unit_price||0) * (qty||1)
-    const fmtM = v => v > 0 ? v.toFixed(0) + ' M' : ''
+    const fmtM = v => v > 0 ? v.toLocaleString('vi-VN') + ' ₫' : ''
 
     if (t.is_summary) {
       const bgColor = t.outline_level===1 ? '#1A2B4A'
@@ -1117,12 +1116,12 @@ function openBulkUnitPrice() {
             <input type="number" class="up-input form-input"
               data-task-id="${t.id}"
               data-qty="${qty||1}"
-              style="padding:3px 6px;font-size:12px;width:90px;text-align:right"
+              style="padding:5px 10px;font-size:13px;width:120px;text-align:right;font-weight:500"
               value="${t.unit_price||''}"
               placeholder="0"
-              min="0" step="0.1"
+              min="0" step="1000"
               oninput="updateUPRow(this)">
-            <span style="font-size:11px;color:var(--gray4)">M</span>
+            <span style="font-size:11px;color:var(--gray5)">₫</span>
           </div>
         </td>
         <td class="up-contract" data-task-id="${t.id}"
@@ -1133,19 +1132,19 @@ function openBulkUnitPrice() {
       </tr>`
   }).join('')
 
-  const fmtT = v => v >= 1000 ? (v/1000).toFixed(2)+'T' : v.toFixed(0)+'M'
+  const fmtT = v => v > 0 ? v.toLocaleString('vi-VN') + ' ₫' : '0 ₫'
 
   openModal('💰 Nhập đơn giá hàng loạt', `
     <div style="min-height:50vh">
       <div style="background:var(--lblue);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;
         display:flex;justify-content:space-between;align-items:center">
         <div style="font-size:13px;color:var(--blue)">
-          Nhập đơn giá (triệu đồng) cho từng công tác.<br>
+          Nhập đơn giá (VND) cho từng công tác.<br>
           <span style="font-size:11px;color:var(--gray5)">Sản lượng TH = Đơn giá × Khối lượng KH × % hoàn thành</span>
         </div>
         <div style="text-align:right">
           <div style="font-size:11px;color:var(--gray5)">Tổng giá trị HĐ</div>
-          <div id="up-total" style="font-size:18px;font-weight:700;color:var(--navy)">${fmtT(currentTotal)}</div>
+          <div id="up-total" style="font-size:16px;font-weight:700;color:var(--navy)">${fmtT(currentTotal)}</div>
         </div>
       </div>
 
@@ -1155,18 +1154,17 @@ function openBulkUnitPrice() {
             <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:1">
               <th style="padding:7px 8px;text-align:left">Hạng mục / Công tác</th>
               <th style="padding:7px 8px;text-align:center;width:100px">Khối lượng KH</th>
-              <th style="padding:7px 8px;text-align:center;width:140px">Đơn giá (triệu)</th>
-              <th style="padding:7px 8px;text-align:right;width:100px">Giá trị HĐ</th>
+              <th style="padding:7px 8px;text-align:center;width:180px">Đơn giá (VND)</th>
+              <th style="padding:7px 8px;text-align:right;width:140px">Giá trị HĐ (VND)</th>
             </tr>
           </thead>
           <tbody id="up-tbody">${rows}</tbody>
-          <tfoot>
-            <tr style="background:var(--navy);color:white">
-              <td colspan="3" style="padding:8px 12px;font-size:12px;font-weight:600">TỔNG GIÁ TRỊ HỢP ĐỒNG</td>
-              <td id="up-total-foot" style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700">${fmtT(currentTotal)}</td>
-            </tr>
-          </tfoot>
         </table>
+      </div>
+      <div style="background:var(--navy);color:white;border-radius:0 0 var(--radius) var(--radius);
+        display:flex;justify-content:space-between;align-items:center;padding:8px 14px">
+        <span style="font-size:12px;font-weight:600">TỔNG GIÁ TRỊ HỢP ĐỒNG</span>
+        <span id="up-total-foot" style="font-size:14px;font-weight:700;color:#93C5FD">${fmtT(currentTotal)}</span>
       </div>
     </div>
   `, `
@@ -1206,7 +1204,7 @@ function updateUPRow(inp) {
     const q = parseFloat(i.dataset.qty) || 1
     total += p * q
   })
-  const fmtT = v => v >= 1000 ? (v/1000).toFixed(2)+'T' : v.toFixed(0)+'M'
+  const fmtT = v => v > 0 ? v.toLocaleString('vi-VN') + ' ₫' : '0 ₫'
   const totalEl = document.getElementById('up-total')
   const totalFoot = document.getElementById('up-total-foot')
   if (totalEl) totalEl.textContent = fmtT(total)
