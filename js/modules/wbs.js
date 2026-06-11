@@ -701,7 +701,7 @@ function openBulkReschedule() {
             background:var(--lblue);border-radius:6px;font-weight:500">0 task đã chọn</span>
         </div>
       </div>
-      <div style="max-height:320px;overflow-y:auto;border:1px solid var(--gray2);border-radius:var(--radius)">
+      <div style="max-height:calc(95vh - 360px);overflow-y:auto;border:1px solid var(--gray2);border-radius:var(--radius)">
         <table style="width:100%;border-collapse:collapse">
           <thead>
             <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:1">
@@ -734,8 +734,10 @@ function openBulkReschedule() {
   `)
 
   // Modal lớn hơn
-  document.querySelector('.modal').style.maxWidth = '900px'
-  document.querySelector('.modal').style.maxHeight = '92vh'
+  const mb = document.querySelector('.modal')
+  mb.style.maxWidth  = '60vw'
+  mb.style.width     = '60vw'
+  mb.style.maxHeight = '95vh'
   updateBulkPreview()
 }
 
