@@ -194,6 +194,13 @@ async function renderWeeklyPDF() {
   const editedAI = ta?.value || ''
   const kttcNote = noteEl?.value?.trim() || ''
 
+  // Collect caption mới nhất từ các input trong grid trước khi đóng modal
+  document.querySelectorAll('#report-photo-grid input[type="text"]').forEach((inp, i) => {
+    if (window._reportAttachments[i]) {
+      window._reportAttachments[i].caption = inp.value
+    }
+  })
+
   if (!STATE._reportData) { toast('Lỗi: không có dữ liệu báo cáo', 'error'); return }
   const { weekPhotos, week, year } = STATE._reportData
 
@@ -321,9 +328,9 @@ async function renderWeeklyPDF() {
               style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block"
               onerror="this.parentElement.style.background='#FEE2E2'">
           </div>
-          ${p.caption ? `<div style="padding:5px 8px;background:#FFFBEB;border-top:2px solid #F59E0B">
-            <div style="font-size:11px;font-weight:500;color:#92400E">⚠️ ${p.caption}</div>
-          </div>` : ''}
+          ${p.caption ? `<div style="padding:6px 10px;background:#FFFBEB;border-top:2px solid #F59E0B">
+            <div style="font-size:12px;font-weight:500;color:#92400E;line-height:1.4">⚠️ ${p.caption}</div>
+          </div>` : '<div style="padding:4px 8px;background:#F9FAFB;border-top:1px solid #E5E7EB"><div style="font-size:10px;color:#9CA3AF;font-style:italic">Chưa có ghi chú</div></div>'}
         </div>`
       ).join('')
 
@@ -331,7 +338,7 @@ async function renderWeeklyPDF() {
         <div style="margin-bottom:16px">
           <div style="background:#F59E0B;color:white;font-size:14px;font-weight:700;
             padding:6px 10px;border-radius:4px 4px 0 0">
-            ⚠️ LƯU Ý / THAM KHẢO CÔNG TÁC TUẦN TỚI (${attachments.length} ảnh)
+            📋 LƯU Ý / HÌNH ẢNH THAM KHẢO CÔNG TÁC SẮP THỰC HIỆN (${attachments.length} ảnh)
           </div>
           <div style="border:0.5px solid #FDE68A;border-top:none;padding:10px;
             border-radius:0 0 4px 4px;background:#FFFBEB">
@@ -502,6 +509,16 @@ async function renderWeeklyPDF() {
       </div>
     </div>
 
+    <!-- KTTC NOTE - ngay sau AI analysis -->
+    ${note ? `
+    <div style="margin-bottom:16px;padding:12px 16px;background:#FFFBEB;
+      border-left:4px solid #D97706;border-radius:0 4px 4px 0">
+      <div style="font-size:14px;font-weight:700;color:#92400E;margin-bottom:6px">
+        📝 GHI CHÚ PHÒNG KTTC
+      </div>
+      <div style="font-size:14px;color:#78350F;white-space:pre-wrap;line-height:1.6">${note}</div>
+    </div>` : ''}
+
     <!-- ATTACH WARNING PHOTOS -->
     ${attachHtml}
 
@@ -548,16 +565,6 @@ async function renderWeeklyPDF() {
   <div style="padding:0 24px 16px">
     ${attendanceHtml}
   </div>
-
-  <!-- KTTC NOTE -->
-    ${note ? `
-    <div style="margin-bottom:16px;padding:12px 16px;background:#FFFBEB;
-      border-left:4px solid #D97706;border-radius:0 4px 4px 0">
-      <div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:6px">
-        📝 GHI CHÚ KTTC
-      </div>
-      <div style="font-size:13px;color:#78350F;white-space:pre-wrap;line-height:1.6">${note}</div>
-    </div>` : ''}
 
   <!-- FOOTER -->
   <div style="background:#F1F5F9;border-top:1px solid #E2E8F0;padding:8px 24px;display:flex;justify-content:space-between;align-items:center">
