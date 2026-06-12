@@ -158,8 +158,9 @@ function initWbs() {
     </div>`
   }).join('')
 
-  // Rollup contract value cho summary tasks
-  STATE.tasks.sort((a,b) => b.outline_level - a.outline_level).forEach(t => {
+  // Rollup contract value — dùng copy để không làm hỏng STATE.tasks gốc
+  const sortedForRollup = [...STATE.tasks].sort((a,b) => b.outline_level - a.outline_level)
+  sortedForRollup.forEach(t => {
     if (!t.is_summary) {
       t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
       return
