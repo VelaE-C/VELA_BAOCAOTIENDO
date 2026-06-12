@@ -79,15 +79,72 @@ function openReportEditor(aiSummary, weekPhotos, week, year) {
       </div>
 
       <!-- Ghi chú thêm của KTTC -->
-      <div>
+      <div style="margin-bottom:14px">
         <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:6px">
           📝 Ghi chú thêm của KTTC (tuỳ chọn — xuất hiện cuối báo cáo)
         </div>
         <textarea id="report-kttc-note"
-          style="width:100%;height:80px;padding:10px 12px;font-size:13px;
+          style="width:100%;height:72px;padding:10px 12px;font-size:13px;
             border:1px solid var(--gray3);border-radius:var(--radius);resize:vertical;
             font-family:'Segoe UI',sans-serif;color:var(--gray8)"
           placeholder="VD: Tuần tới ưu tiên đẩy LK1, họp CĐT ngày 15/6 về phát sinh..."></textarea>
+      </div>
+
+      <!-- Ảnh đính kèm báo cáo -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:8px;
+          display:flex;justify-content:space-between;align-items:center">
+          <span>📎 Ảnh đính kèm báo cáo (cảnh báo / tham khảo công tác sắp tới)</span>
+          <span style="font-size:11px;color:var(--gray4);font-weight:400">Tối đa 6 ảnh · Xuất thành section riêng trong PDF</span>
+        </div>
+
+        <!-- 2 nguồn ảnh -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="openReportPhotoLibrary()"
+            style="font-size:12px">
+            🖼️ Chọn từ thư viện tuần này
+          </button>
+          <label class="btn btn-secondary btn-sm" style="cursor:pointer;font-size:12px;margin:0">
+            ⬆️ Upload ảnh mới
+            <input type="file" id="report-photo-upload" accept="image/*" multiple
+              style="display:none" onchange="handleReportPhotoUpload(this)">
+          </label>
+        </div>
+
+        <!-- Grid ảnh đã chọn -->
+        <div id="report-photo-grid"
+          style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;min-height:40px">
+          <div style="grid-column:1/-1;text-align:center;color:var(--gray4);font-size:12px;
+            padding:16px;border:1px dashed var(--gray3);border-radius:var(--radius)">
+            Chưa có ảnh đính kèm — chọn từ thư viện hoặc upload mới
+          </div>
+        </div>
+
+        <!-- Modal chọn từ thư viện -->
+        <div id="report-library-modal" style="display:none;position:fixed;inset:0;
+          background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center;padding:20px">
+          <div style="background:white;border-radius:12px;width:100%;max-width:640px;
+            max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--gray2);
+              display:flex;justify-content:space-between;align-items:center">
+              <h3 style="font-size:15px;font-weight:600">🖼️ Chọn ảnh từ thư viện tuần này</h3>
+              <button onclick="document.getElementById('report-library-modal').style.display='none'"
+                style="background:none;border:none;font-size:20px;color:var(--gray4);cursor:pointer">✕</button>
+            </div>
+            <div id="report-library-grid"
+              style="padding:16px;overflow-y:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              <div style="grid-column:1/-1;text-align:center;color:var(--gray4);padding:20px">
+                Đang tải ảnh...
+              </div>
+            </div>
+            <div style="padding:12px 20px;border-top:1px solid var(--gray2);text-align:right">
+              <button class="btn btn-secondary btn-sm"
+                onclick="document.getElementById('report-library-modal').style.display='none'">
+                Xong
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   `, `
@@ -103,6 +160,9 @@ function openReportEditor(aiSummary, weekPhotos, week, year) {
       </div>
     </div>
   `)
+
+  // Reset ảnh đính kèm mỗi lần mở editor mới
+  window._reportAttachments = []
 
   // Lưu dữ liệu vào STATE để renderWeeklyPDF dùng
   STATE._reportData = { aiSummary, weekPhotos, week, year }
@@ -142,6 +202,7 @@ async function renderWeeklyPDF() {
 
   // Gán lại aiSummary đã chỉnh sửa để exportWeeklyPDF dùng
   STATE._editedReport = { aiSummary: editedAI, weekPhotos, week, year, kttcNote }
+  // attachHtml được build trực tiếp từ window._reportAttachments trong renderWeeklyPDF
   try {
     const { aiSummary, weekPhotos: wPhotos, week: wk, year: yr, kttcNote: note } = STATE._editedReport
     const LOGO_URL = 'https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png'
@@ -248,6 +309,38 @@ async function renderWeeklyPDF() {
       }
       return `<div style="font-size:14px;line-height:1.7;color:#1E293B;margin:2px 0">${clean}</div>`
     }).join('')
+
+    // Build ảnh đính kèm cảnh báo/tham khảo
+    let attachHtml = ''
+    const attachments = window._reportAttachments || []
+    if (attachments.length) {
+      const attachItems = attachments.map(p => `
+        <div style="border-radius:6px;overflow:hidden;border:0.5px solid #E2E8F0;background:white">
+          <div style="width:100%;padding-top:66%;position:relative;overflow:hidden;background:#F1F5F9">
+            <img src="${p.url}" crossorigin="anonymous"
+              style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block"
+              onerror="this.parentElement.style.background='#FEE2E2'">
+          </div>
+          ${p.caption ? `<div style="padding:5px 8px;background:#FFFBEB;border-top:2px solid #F59E0B">
+            <div style="font-size:11px;font-weight:500;color:#92400E">⚠️ ${p.caption}</div>
+          </div>` : ''}
+        </div>`
+      ).join('')
+
+      attachHtml = `
+        <div style="margin-bottom:16px">
+          <div style="background:#F59E0B;color:white;font-size:14px;font-weight:700;
+            padding:6px 10px;border-radius:4px 4px 0 0">
+            ⚠️ LƯU Ý / THAM KHẢO CÔNG TÁC TUẦN TỚI (${attachments.length} ảnh)
+          </div>
+          <div style="border:0.5px solid #FDE68A;border-top:none;padding:10px;
+            border-radius:0 0 4px 4px;background:#FFFBEB">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              ${attachItems}
+            </div>
+          </div>
+        </div>`
+    }
 
     // Build photos HTML
     let photosHtml = ''
@@ -408,6 +501,9 @@ async function renderWeeklyPDF() {
         ${aiHtml}
       </div>
     </div>
+
+    <!-- ATTACH WARNING PHOTOS -->
+    ${attachHtml}
 
     <!-- PHOTOS -->
     ${photosHtml}
@@ -782,4 +878,159 @@ async function saveTaskSettings(taskId) {
   toast('Đã lưu cài đặt!', 'success')
   closeModal()
   navigate('wbs')
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// ẢNH ĐÍNH KÈM BÁO CÁO — Cảnh báo / tham khảo công tác
+// ═══════════════════════════════════════════════════════════
+
+// Lưu danh sách ảnh đính kèm (url + caption)
+if (!window._reportAttachments) window._reportAttachments = []
+
+function renderReportPhotoGrid() {
+  const grid = document.getElementById('report-photo-grid')
+  if (!grid) return
+  const photos = window._reportAttachments
+
+  if (!photos.length) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;color:var(--gray4);font-size:12px;
+        padding:16px;border:1px dashed var(--gray3);border-radius:var(--radius)">
+        Chưa có ảnh đính kèm — chọn từ thư viện hoặc upload mới
+      </div>`
+    return
+  }
+
+  grid.innerHTML = photos.map((p, i) => `
+    <div style="border-radius:8px;overflow:hidden;border:1px solid var(--gray2);background:white;position:relative">
+      <div style="width:100%;padding-top:66%;position:relative;overflow:hidden;background:var(--gray1)">
+        <img src="${p.url}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover"
+          onerror="this.parentElement.style.background='#FEE2E2'">
+      </div>
+      <div style="padding:6px 8px">
+        <input type="text" value="${p.caption||''}" placeholder="Ghi chú / cảnh báo..."
+          style="width:100%;font-size:11px;border:none;border-bottom:1px solid var(--gray2);
+            padding:2px 0;color:var(--gray7);background:transparent;outline:none"
+          oninput="window._reportAttachments[${i}].caption=this.value">
+      </div>
+      <button onclick="removeReportPhoto(${i})"
+        style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.5);color:white;
+          border:none;border-radius:50%;width:20px;height:20px;font-size:11px;
+          cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">✕</button>
+    </div>`
+  ).join('')
+}
+
+function removeReportPhoto(idx) {
+  window._reportAttachments.splice(idx, 1)
+  renderReportPhotoGrid()
+}
+
+function addReportPhoto(url, caption = '') {
+  if (window._reportAttachments.length >= 6) {
+    toast('Tối đa 6 ảnh đính kèm', 'error'); return false
+  }
+  // Kiểm tra trùng
+  if (window._reportAttachments.find(p => p.url === url)) {
+    toast('Ảnh này đã được thêm', ''); return false
+  }
+  window._reportAttachments.push({ url, caption })
+  renderReportPhotoGrid()
+  return true
+}
+
+// Chọn từ thư viện ảnh tuần này
+async function openReportPhotoLibrary() {
+  const modal = document.getElementById('report-library-modal')
+  const grid  = document.getElementById('report-library-grid')
+  if (!modal || !grid) return
+
+  modal.style.display = 'flex'
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--gray4)">Đang tải...</div>'
+
+  const proj = STATE.currentProject
+  const week = getISOWeek(new Date())
+  const year = new Date().getFullYear()
+
+  const { data: photos } = await sb.from('task_photos')
+    .select('id,photo_url,caption,taken_at,task_id,tasks(name)')
+    .eq('project_id', proj.id)
+    .eq('week_number', week)
+    .eq('year', year)
+    .order('taken_at', { ascending: false })
+
+  if (!photos?.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--gray4)">Chưa có ảnh tuần này</div>'
+    return
+  }
+
+  grid.innerHTML = photos.map(p => {
+    const isAdded = window._reportAttachments.find(a => a.url === p.photo_url)
+    const label   = !p.task_id ? (p.caption||'Ảnh tổng thể') : (p.tasks?.name||p.caption||'—')
+    const date    = p.taken_at ? new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : ''
+    return `
+      <div style="border-radius:8px;overflow:hidden;border:2px solid ${isAdded?'var(--blue)':'var(--gray2)'};
+        cursor:pointer;background:white;transition:border-color .15s"
+        onclick="toggleLibraryPhoto('${p.photo_url}','${(label||'').replace(/'/g,"'")}',this)">
+        <div style="width:100%;padding-top:66%;position:relative;overflow:hidden;background:var(--gray1)">
+          <img src="${p.photo_url}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover">
+          ${isAdded ? '<div style="position:absolute;top:4px;right:4px;background:var(--blue);color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px">✓</div>' : ''}
+        </div>
+        <div style="padding:5px 7px">
+          <div style="font-size:10px;font-weight:500;color:var(--gray7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
+          <div style="font-size:9px;color:var(--gray4)">${date}</div>
+        </div>
+      </div>`
+  }).join('')
+}
+
+function toggleLibraryPhoto(url, caption, el) {
+  const existing = window._reportAttachments.findIndex(p => p.url === url)
+  if (existing >= 0) {
+    // Bỏ chọn
+    window._reportAttachments.splice(existing, 1)
+    el.style.borderColor = 'var(--gray2)'
+    el.querySelector('div>div:last-child') && null
+    renderReportPhotoGrid()
+  } else {
+    if (addReportPhoto(url, caption)) {
+      el.style.borderColor = 'var(--blue)'
+    }
+  }
+}
+
+// Upload ảnh mới vào báo cáo
+async function handleReportPhotoUpload(input) {
+  const files = Array.from(input.files).slice(0, 6 - window._reportAttachments.length)
+  if (!files.length) return
+
+  loading(true, 'Đang upload ảnh...')
+  try {
+    for (const file of files) {
+      let uploadFile = file
+      if (typeof imageCompression !== 'undefined') {
+        uploadFile = await imageCompression(file, {
+          maxSizeMB: 0.3, maxWidthOrHeight: 1280, useWebWorker: true, fileType: 'image/jpeg'
+        })
+      }
+      const proj = STATE.currentProject
+      const ext  = 'jpg'
+      const path = `${proj.id}/report_attach/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`
+      const buf  = await uploadFile.arrayBuffer()
+
+      const { error } = await sb.storage.from(CFG.STORAGE_BUCKET)
+        .upload(path, buf, { upsert: true, contentType: 'image/jpeg' })
+      if (error) throw error
+
+      const { data: urlData } = sb.storage.from(CFG.STORAGE_BUCKET).getPublicUrl(path)
+      addReportPhoto(urlData.publicUrl, file.name.replace(/\.[^.]+$/, ''))
+    }
+    toast(`Đã upload ${files.length} ảnh`, 'success')
+  } catch(e) {
+    toast('Lỗi upload: ' + e.message, 'error')
+  } finally {
+    loading(false)
+    input.value = ''
+  }
 }
