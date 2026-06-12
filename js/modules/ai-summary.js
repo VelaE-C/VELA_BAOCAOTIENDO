@@ -130,7 +130,7 @@ async function generateAISummary() {
     // Giữ lvl2SummaryClean cho backward compat
     const lvl2SummaryClean = lvl3SummaryClean
 
-    const prompt = `Bạn là chuyên gia quản lý dự án xây dựng tại Việt Nam. Phân tích tiến độ dự án và viết báo cáo ngắn gọn, chính xác bằng tiếng Việt.
+    const prompt = `Bạn là trợ lý phân tích dự án xây dựng. Nhiệm vụ: viết báo cáo tuần cho BAN GIÁM ĐỐC — ngắn gọn, số liệu macro, tập trung vào quyết định và rủi ro. KHÔNG liệt kê chi tiết từng task. KHÔNG dùng ngôn ngữ kỹ thuật chuyên sâu.
 
 DỰ ÁN: ${proj.name} (${proj.code})
 NGÀY BÁO CÁO: ${today} - Tuần ${week}
@@ -183,24 +183,26 @@ LƯU Ý QUAN TRỌNG:
 - Nếu delay > 100 ngày mà % hoàn thành = 0 và chưa có tt_start → có thể là task chưa đến giai đoạn thi công, không phải trễ thực sự
 - % thời gian đã qua được tính từ ngày bắt đầu thi công thực tế (không phải ngày tạo file kế hoạch)
 
-Hãy viết báo cáo TÓM TẮT gồm 4 phần, mỗi phần 2-4 câu ngắn gọn, súc tích:
+YÊU CẦU OUTPUT — viết đúng 4 mục sau, mỗi mục tối đa 3-4 câu, dùng bullet (•) nếu cần liệt kê:
 
 ## 1. TỔNG QUAN TIẾN ĐỘ
-Đánh giá chung: dự án đang ở mức nào so với kế hoạch tổng thể (tính theo % thời gian đã qua vs % hoàn thành). Nêu 1-2 điểm tích cực nếu có.
+Một câu đánh giá tổng thể: dự án đang ở đâu so với kế hoạch (% TH vs % thời gian đã qua, còn bao nhiêu ngày). Nêu 1 điểm tích cực nếu có. KHÔNG liệt kê từng công tác.
 
-## 2. ĐIỂM CHÚ Ý
-Top 3 rủi ro/vấn đề cụ thể cần xử lý ngay. Nêu tên công tác, số ngày trễ, hậu quả nếu không xử lý.
+## 2. CẢNH BÁO CÁC DỰ ÁN SAI TIMELINE
+Dự án/gói nào đang lệch tiến độ nghiêm trọng (>15%)? Ước tính nguy cơ trễ deadline bao nhiêu tuần/tháng nếu không can thiệp? Mức độ: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
 
-## 3. XU HƯỚNG TUẦN TỚI
-Dự báo dựa trên tốc độ hiện tại. Cảnh báo nếu có nguy cơ vượt deadline tổng.
+## 3. CẢNH BÁO SỚM
+Rủi ro nào có thể xảy ra trong 2-3 tuần tới? (VD: deadline con sắp đến, phụ thuộc nhà thầu phụ, thời tiết, phê duyệt CĐT...). Tập trung vào rủi ro có thể phòng ngừa NGAY.
 
-## 4. KHUYẾN NGHỊ
-2-3 hành động CỤ THỂ, có thể thực hiện ngay trong tuần tới. Ưu tiên theo mức độ tác động.
+## 4. VẤN ĐỀ KỸ THUẬT CẦN LƯU Ý KHI CHUYỂN CÔNG TÁC
+Gói công việc nào sắp bàn giao sang giai đoạn tiếp theo? Điều kiện tiên quyết chưa đủ? BCH cần chuẩn bị gì? (VD: nghiệm thu kết cấu trước khi hoàn thiện, MEP trước khi trát tường...)
 
-## 5. ĐÁNH GIÁ NHÂN LỰC
-Dựa trên dữ liệu quân số: quân số hiện tại có đáp ứng được yêu cầu thi công không? Nếu thiếu nhân lực ở gói nào, đề xuất điều chuyển cụ thể.
-
-Giọng văn chuyên nghiệp, thực tế, dành cho Ban Giám Đốc. Dùng **bold** cho tên công tác và số liệu quan trọng.`
+QUY TẮC:
+- Viết cho BGĐ — người đọc không cần biết chi tiết kỹ thuật
+- Số liệu macro: %, ngày, tuần — không cần tên task cụ thể trừ khi rất quan trọng
+- Mỗi mục tối đa 80 từ
+- Dùng **bold** cho con số và cụm từ quan trọng
+- Tông văn: thẳng thắn, quyết đoán, không vòng vo`
 
     // Gọi qua Supabase Edge Function (tránh CORS khi gọi trực tiếp từ browser)
     const { data: { session } } = await sb.auth.getSession()
