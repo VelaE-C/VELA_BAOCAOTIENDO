@@ -915,10 +915,13 @@ function renderReportPhotoGrid() {
         <img src="${p.url}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover"
           onerror="this.parentElement.style.background='#FEE2E2'">
       </div>
-      <div style="padding:6px 8px">
-        <input type="text" value="${p.caption||''}" placeholder="Ghi chú / cảnh báo..."
-          style="width:100%;font-size:11px;border:none;border-bottom:1px solid var(--gray2);
-            padding:2px 0;color:var(--gray7);background:transparent;outline:none"
+      <div style="padding:6px 8px;background:#FAFAFA;border-top:1px solid var(--gray2)">
+        <div style="font-size:9px;color:var(--gray4);margin-bottom:3px;font-weight:500">✏️ CAPTION / GHI CHÚ:</div>
+        <input type="text" value="${p.caption||''}"
+          placeholder="Nhập ghi chú hoặc cảnh báo cho ảnh này..."
+          style="width:100%;font-size:12px;border:1px solid var(--gray3);border-radius:4px;
+            padding:5px 8px;color:var(--gray7);background:white;outline:none;
+            box-sizing:border-box"
           oninput="window._reportAttachments[${i}].caption=this.value">
       </div>
       <button onclick="removeReportPhoto(${i})"
