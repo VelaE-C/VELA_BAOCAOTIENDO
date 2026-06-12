@@ -188,10 +188,10 @@ YÊU CẦU OUTPUT — viết đúng 4 mục sau, mỗi mục tối đa 3-4 câu,
 ## 1. TỔNG QUAN TIẾN ĐỘ
 Một câu đánh giá tổng thể: dự án đang ở đâu so với kế hoạch (% TH vs % thời gian đã qua, còn bao nhiêu ngày). Nêu 1 điểm tích cực nếu có. KHÔNG liệt kê từng công tác.
 
-## 2. CẢNH BÁO CÁC DỰ ÁN SAI TIMELINE
+## 2. CẢNH BÁO TIMELINE DỰ ÁN
 Dự án/gói nào đang lệch tiến độ nghiêm trọng (>15%)? Ước tính nguy cơ trễ deadline bao nhiêu tuần/tháng nếu không can thiệp? Mức độ: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
 
-## 3. CẢNH BÁO SỚM
+## 3. CẢNH BÁO TƯƠNG LAI
 Rủi ro nào có thể xảy ra trong 2-3 tuần tới? (VD: deadline con sắp đến, phụ thuộc nhà thầu phụ, thời tiết, phê duyệt CĐT...). Tập trung vào rủi ro có thể phòng ngừa NGAY.
 
 ## 4. VẤN ĐỀ KỸ THUẬT CẦN LƯU Ý KHI CHUYỂN CÔNG TÁC
