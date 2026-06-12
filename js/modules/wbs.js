@@ -20,7 +20,7 @@ function wbs() {
     </div>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
-    <div class="wbs-header">
+    <div class="wbs-header" style="position:sticky;top:0;z-index:10">
       <div style="width:40px;flex-shrink:0"></div>
       <div class="wbs-name">Hạng mục / Công tác</div>
       <div class="wbs-kh-start">KH Bắt đầu</div>
@@ -34,7 +34,7 @@ function wbs() {
       <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
       <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
     </div>
-    <div class="wbs-tree" id="wbs-container"></div>
+    <div class="wbs-tree" id="wbs-container" style="height:calc(100vh - 230px);overflow-y:auto"></div>
   </div>`
 }
 
