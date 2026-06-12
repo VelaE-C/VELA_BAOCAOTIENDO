@@ -2,34 +2,150 @@
 // EXPORT WEEKLY REPORT (text-based)
 // ═══════════════════════════════════════════════════════════
 async function exportWeeklyReport() {
-  const LOGO_URL = 'https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png'
   const proj = STATE.currentProject
   if (!proj) { toast('Chưa có dự án', 'error'); return }
 
   const week = getISOWeek(new Date())
   const year = new Date().getFullYear()
+
+  loading(true, 'Đang tải dữ liệu báo cáo...')
   const { data: aiData } = await sb.from('ai_summaries')
     .select('*').eq('project_id', proj.id)
     .eq('week_number', week).eq('year', year)
     .order('created_at', { ascending: false }).limit(1)
   const aiSummary = aiData?.[0]?.summary_text || null
 
-  // Lấy ảnh tuần này (tối đa 6 ảnh cho báo cáo PDF)
   const { data: weekPhotos } = await sb.from('task_photos')
     .select('photo_url,caption,taken_at,task_id,tasks(name)')
     .eq('project_id', proj.id)
-    .eq('week_number', week)
-    .eq('year', year)
+    .eq('week_number', week).eq('year', year)
     .order('taken_at', { ascending: false })
     .limit(9)
+  loading(false)
 
-  if (false) {
-    toast('Chưa có AI tóm tắt tuần này. Hãy bấm "🤖 AI Tóm tắt" trước.', 'error')
-    return
-  }
+  // Mở editor để review trước khi xuất PDF
+  openReportEditor(aiSummary, weekPhotos, week, year)
+}
 
+// ── Editor review báo cáo trước khi xuất PDF ─────────────
+function openReportEditor(aiSummary, weekPhotos, week, year) {
+  const proj = STATE.currentProject
+  const photoCount = weekPhotos?.length || 0
+
+  openModal(`📋 Review báo cáo tuần ${week}/${year}`, `
+    <div style="min-height:60vh">
+      <div style="background:var(--lblue);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;
+        display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--blue)">
+            ${proj.code} — Tuần ${week}/${year}
+          </div>
+          <div style="font-size:11px;color:var(--gray5);margin-top:2px">
+            ${photoCount} ảnh · Có Gantt chart · Có biểu đồ quân số
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${!aiSummary ? `<span style="font-size:11px;color:var(--amber);background:#FEF3C7;padding:4px 10px;border-radius:6px">
+            ⚠️ Chưa có AI tóm tắt — nội dung sẽ trống
+          </span>` : `<span style="font-size:11px;color:var(--green);background:#DCFCE7;padding:4px 10px;border-radius:6px">
+            ✅ Đã có AI tóm tắt tuần này
+          </span>`}
+        </div>
+      </div>
+
+      <!-- Editor nội dung AI -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:6px;
+          display:flex;justify-content:space-between;align-items:center">
+          <span>✏️ Nội dung phân tích AI (có thể chỉnh sửa trước khi xuất)</span>
+          <button onclick="resetReportContent()" class="btn btn-secondary btn-sm" style="font-size:11px">
+            ↩ Reset về AI gốc
+          </button>
+        </div>
+        <textarea id="report-ai-content"
+          style="width:100%;height:340px;padding:12px;font-size:13px;line-height:1.7;
+            border:1px solid var(--gray3);border-radius:var(--radius);resize:vertical;
+            font-family:'Segoe UI',sans-serif;color:var(--gray8)"
+          placeholder="Chưa có nội dung AI. Bấm 'AI Tóm tắt tiến độ' trước để tạo nội dung."
+          spellcheck="false">${aiSummary || ''}</textarea>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <span style="font-size:11px;color:var(--gray4)">
+            Chỉnh sửa trực tiếp trong ô này — thay đổi sẽ được xuất vào PDF
+          </span>
+          <span id="report-char-count" style="font-size:11px;color:var(--gray4)">
+            ${(aiSummary||'').length} ký tự
+          </span>
+        </div>
+      </div>
+
+      <!-- Ghi chú thêm của KTTC -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:6px">
+          📝 Ghi chú thêm của KTTC (tuỳ chọn — xuất hiện cuối báo cáo)
+        </div>
+        <textarea id="report-kttc-note"
+          style="width:100%;height:80px;padding:10px 12px;font-size:13px;
+            border:1px solid var(--gray3);border-radius:var(--radius);resize:vertical;
+            font-family:'Segoe UI',sans-serif;color:var(--gray8)"
+          placeholder="VD: Tuần tới ưu tiên đẩy LK1, họp CĐT ngày 15/6 về phát sinh..."></textarea>
+      </div>
+    </div>
+  `, `
+    <div style="display:flex;align-items:center;gap:8px;width:100%;justify-content:space-between">
+      <span style="font-size:12px;color:var(--gray5)">
+        PDF sẽ bao gồm: Phân tích AI · Ảnh thi công (${photoCount}) · Tiến độ · Gantt · Quân số
+      </span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" onclick="renderWeeklyPDF()">
+          📄 Xuất PDF
+        </button>
+      </div>
+    </div>
+  `)
+
+  // Lưu dữ liệu vào STATE để renderWeeklyPDF dùng
+  STATE._reportData = { aiSummary, weekPhotos, week, year }
+
+  // Modal lớn hơn
+  const m = document.querySelector('.modal')
+  m.style.maxWidth = '700px'
+  m.style.maxHeight = '92vh'
+
+  // Đếm ký tự realtime
+  document.getElementById('report-ai-content').addEventListener('input', function() {
+    const el = document.getElementById('report-char-count')
+    if (el) el.textContent = this.value.length + ' ký tự'
+  })
+}
+
+function resetReportContent() {
+  const ta = document.getElementById('report-ai-content')
+  if (!ta || !STATE._reportData) return
+  ta.value = STATE._reportData.aiSummary || ''
+  const el = document.getElementById('report-char-count')
+  if (el) el.textContent = ta.value.length + ' ký tự'
+  toast('Đã reset về nội dung AI gốc', '')
+}
+
+async function renderWeeklyPDF() {
+  const ta       = document.getElementById('report-ai-content')
+  const noteEl   = document.getElementById('report-kttc-note')
+  const editedAI = ta?.value || ''
+  const kttcNote = noteEl?.value?.trim() || ''
+
+  if (!STATE._reportData) { toast('Lỗi: không có dữ liệu báo cáo', 'error'); return }
+  const { weekPhotos, week, year } = STATE._reportData
+
+  closeModal()
   loading(true, 'Đang tạo PDF báo cáo tuần...')
+
+  // Gán lại aiSummary đã chỉnh sửa để exportWeeklyPDF dùng
+  STATE._editedReport = { aiSummary: editedAI, weekPhotos, week, year, kttcNote }
   try {
+    const { aiSummary, weekPhotos: wPhotos, week: wk, year: yr, kttcNote: note } = STATE._editedReport
+    const LOGO_URL = 'https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png'
+    const proj = STATE.currentProject
     const tasks   = STATE.tasks
     const leaf     = tasks.filter(t => !t.is_summary)
     const done     = leaf.filter(t => (t.pct_complete||0) === 100)
@@ -135,8 +251,8 @@ async function exportWeeklyReport() {
 
     // Build photos HTML
     let photosHtml = ''
-    if (weekPhotos?.length) {
-      const photoItems = weekPhotos.map(p => {
+    if (wPhotos?.length) {
+      const photoItems = wPhotos.map(p => {
         const label = !p.task_id
           ? (p.caption || 'Ảnh tổng thể')
           : (p.tasks?.name || p.caption || '')
@@ -164,7 +280,7 @@ async function exportWeeklyReport() {
       photosHtml = `
         <div style="margin-bottom:16px">
           <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
-            📷 ẢNH THI CÔNG TUẦN ${week}/${year} (${weekPhotos.length} ảnh)
+            📷 ẢNH THI CÔNG TUẦN ${wk}/${yr} (${wPhotos.length} ảnh)
           </div>
           <div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA">
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
@@ -250,7 +366,7 @@ async function exportWeeklyReport() {
     <div style="text-align:right">
       <div style="color:white;font-size:20px;font-weight:700">BÁO CÁO TIẾN ĐỘ THI CÔNG</div>
       <div style="color:rgba(255,255,255,0.8);font-size:14px;margin-top:3px">${proj.name}</div>
-      <div style="color:rgba(255,255,255,0.65);font-size:12px;margin-top:2px">Tuần ${week}/${year} &nbsp;|&nbsp; Ngày lập: ${today}</div>
+      <div style="color:rgba(255,255,255,0.65);font-size:12px;margin-top:2px">Tuần ${wk}/${yr} &nbsp;|&nbsp; Ngày lập: ${today}</div>
     </div>
   </div>
 
@@ -286,7 +402,7 @@ async function exportWeeklyReport() {
     <!-- AI SUMMARY -->
     <div style="margin-bottom:16px">
       <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;letter-spacing:0.04em">
-        🤖 PHÂN TÍCH AI — TUẦN ${week}/${year}
+        🤖 PHÂN TÍCH AI — TUẦN ${wk}/${yr}
       </div>
       <div style="border:0.5px solid #E2E8F0;border-top:none;padding:12px;border-radius:0 0 4px 4px;background:#FAFAFA">
         ${aiHtml}
@@ -336,6 +452,16 @@ async function exportWeeklyReport() {
   <div style="padding:0 24px 16px">
     ${attendanceHtml}
   </div>
+
+  <!-- KTTC NOTE -->
+    ${note ? `
+    <div style="margin-bottom:16px;padding:12px 16px;background:#FFFBEB;
+      border-left:4px solid #D97706;border-radius:0 4px 4px 0">
+      <div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:6px">
+        📝 GHI CHÚ KTTC
+      </div>
+      <div style="font-size:13px;color:#78350F;white-space:pre-wrap;line-height:1.6">${note}</div>
+    </div>` : ''}
 
   <!-- FOOTER -->
   <div style="background:#F1F5F9;border-top:1px solid #E2E8F0;padding:8px 24px;display:flex;justify-content:space-between;align-items:center">
