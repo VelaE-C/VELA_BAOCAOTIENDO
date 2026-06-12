@@ -171,13 +171,14 @@ function calcProgressDetail(task) {
   }
 
   // ── 2. Chưa bắt đầu ────────────────────────────────────────────────────
-  if (!task.tt_start) {
-    // Nếu đã qua ngày KH bắt đầu mà chưa làm → tính số ngày trễ bắt đầu
+  // Coi là chưa bắt đầu nếu: pct=0 VÀ actQty=0 (dù tt_start có giá trị hay không)
+  const reallyNotStarted = pct === 0 && actQty === 0
+  if (reallyNotStarted) {
     if (khStart && today > khStart) {
       const startDelay = Math.round((today - khStart) / 86400000)
       return { delayDays: startDelay, label: `Chưa BĐ · trễ ${startDelay} ngày`, done:false, hasUnit:false }
     }
-    return { delayDays:null, label:'—', done:false, hasUnit:false }
+    return { delayDays:null, label:'Chưa BĐ', done:false, hasUnit:false }
   }
 
   if (!khStart || !khEnd || khDays <= 0)
