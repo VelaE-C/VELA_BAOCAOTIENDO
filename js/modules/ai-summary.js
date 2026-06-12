@@ -139,7 +139,7 @@ TIẾN ĐỘ: Đã đi ${timeElapsedPct} thời gian thi công, hoàn thành ${t
 
 TỔNG QUAN:
 - Tổng công tác: ${leaf.length} | Hoàn thành: ${done.length} | Đang thi công: ${leaf.filter(t=>t.tt_start&&(t.pct_complete||0)<100).length}
-- Chậm tiến độ: ${validLate.length} công tác | Trễ trung bình: ${validAvgDelay} ngày
+- Chậm tiến độ: ${validLate.length} công tác | Trễ trung bình: ${validAvgDelay} ngày (ĐÂY LÀ SỐ CHÍNH XÁC TỪ HỆ THỐNG — dùng con số này, KHÔNG tự tính lại)
 - Chưa bắt đầu (quá hạn trong 60 ngày gần đây): ${validNotStarted.length} công tác
 - % hoàn thành tổng thể: ${totalPct}%
 ${historyContext}
@@ -156,7 +156,9 @@ ${(() => {
       if (!STATE._attendanceData) return ''
       const c    = STATE._attendanceData.current
       const hist = STATE._attendanceData.history || []
-      const avg7 = STATE._attendanceData.avgCN7 || 0
+      // avgCN7day = TB 7 ngày thực (đúng với tuần báo cáo)
+      // avgCN7    = TB 30 ngày (cho chart, không dùng trong AI)
+      const avg7 = STATE._attendanceData.avgCN7day || STATE._attendanceData.avgCN7 || 0
 
       // Xu hướng: so sánh 3 ngày đầu vs 3 ngày cuối trong 7 ngày
       const first3 = hist.slice(0,3).map(h => h.cn_proj||0)
@@ -172,7 +174,7 @@ ${(() => {
       const minCN = Math.min(...hist.map(h=>h.cn_proj||0))
       const maxCN = Math.max(...hist.map(h=>h.cn_proj||0))
       return `QUÂN SỐ 7 NGÀY GẦN NHẤT:
-- TB: ${avg7} CN/ngày ${trendStr} | Min: ${minCN} | Max: ${maxCN}
+- TB 7 ngày (tuần báo cáo): ${avg7} CN/ngày ${trendStr} | Min: ${minCN} | Max: ${maxCN}
 - Ngày gần nhất: ${lastDay.cn_proj||0} CN · BCH: ${lastDay.total_bch||0}
 - Phân loại: KC ${lastDay.total_ketcau||0} · HT ${lastDay.total_hoanthien||0} · MEP ${lastDay.total_mep||0} · CN ${lastDay.total_congnhat||0}
 `
@@ -191,7 +193,7 @@ Một câu đánh giá tổng thể: dự án đang ở đâu so với kế ho�
 ## 2. CẢNH BÁO TIMELINE DỰ ÁN
 Dự án/gói nào đang lệch tiến độ nghiêm trọng (>15%)? Ước tính nguy cơ trễ deadline bao nhiêu tuần/tháng nếu không can thiệp? Mức độ: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
 
-## 3. CẢNH BÁO TƯƠNG LAI
+## 3. RỦI RO TUẦN TỚI
 Rủi ro nào có thể xảy ra trong 2-3 tuần tới? (VD: deadline con sắp đến, phụ thuộc nhà thầu phụ, thời tiết, phê duyệt CĐT...). Tập trung vào rủi ro có thể phòng ngừa NGAY.
 
 ## 4. VẤN ĐỀ KỸ THUẬT CẦN LƯU Ý KHI CHUYỂN CÔNG TÁC
@@ -202,7 +204,8 @@ QUY TẮC:
 - Số liệu macro: %, ngày, tuần — không cần tên task cụ thể trừ khi rất quan trọng
 - Mỗi mục tối đa 80 từ
 - Dùng **bold** cho con số và cụm từ quan trọng
-- Tông văn: thẳng thắn, quyết đoán, không vòng vo`
+- Tông văn: thẳng thắn, quyết đoán, không vòng vo
+- QUAN TRỌNG: Chỉ dùng số liệu được cung cấp trong DATA bên trên. KHÔNG tự tính toán lại hoặc suy diễn con số khác. Nếu so sánh với tuần trước thì chỉ dùng số liệu lịch sử đã cho.`
 
     // Gọi qua Supabase Edge Function (tránh CORS khi gọi trực tiếp từ browser)
     const { data: { session } } = await sb.auth.getSession()
