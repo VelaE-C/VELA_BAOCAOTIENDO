@@ -149,9 +149,15 @@ function openReportEditor(aiSummary, weekPhotos, week, year) {
     </div>
   `, `
     <div style="display:flex;align-items:center;gap:8px;width:100%;justify-content:space-between">
-      <span style="font-size:12px;color:var(--gray5)">
-        PDF sẽ bao gồm: Phân tích AI · Ảnh thi công (${photoCount}) · Tiến độ · Gantt · Quân số
-      </span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--gray5)">
+          PDF: AI · <span id="report-photo-count-label">Ảnh thi công (${photoCount})</span> · Tiến độ · Gantt · Quân số
+        </span>
+        <button class="btn btn-secondary btn-sm" onclick="openPhotoSelector()"
+          style="font-size:11px;white-space:nowrap">
+          🖼️ Chọn & sắp xếp ảnh thi công
+        </button>
+      </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
         <button class="btn btn-primary" onclick="renderWeeklyPDF()">
@@ -161,8 +167,9 @@ function openReportEditor(aiSummary, weekPhotos, week, year) {
     </div>
   `)
 
-  // Reset ảnh đính kèm mỗi lần mở editor mới
+  // Reset mỗi lần mở editor mới
   window._reportAttachments = []
+  window._selectedPhotos    = null  // null = dùng auto (9 mới nhất)
 
   // Lưu dữ liệu vào STATE để renderWeeklyPDF dùng
   STATE._reportData = { aiSummary, weekPhotos, week, year }
@@ -349,10 +356,13 @@ async function renderWeeklyPDF() {
         </div>`
     }
 
-    // Build photos HTML
+    // Build photos HTML — dùng ảnh user chọn nếu có, không thì dùng auto
+    const finalPhotos = (window._selectedPhotos !== null && window._selectedPhotos !== undefined)
+      ? window._selectedPhotos
+      : (wPhotos || [])
     let photosHtml = ''
-    if (wPhotos?.length) {
-      const photoItems = wPhotos.map(p => {
+    if (finalPhotos?.length) {
+      const photoItems = finalPhotos.map(p => {
         const label = !p.task_id
           ? (p.caption || 'Ảnh tổng thể')
           : (p.tasks?.name || p.caption || '')
@@ -380,7 +390,7 @@ async function renderWeeklyPDF() {
       photosHtml = `
         <div style="margin-bottom:16px">
           <div style="background:#1A2B4A;color:white;font-size:14px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">
-            📷 ẢNH THI CÔNG TUẦN ${wk}/${yr} (${wPhotos.length} ảnh)
+            📷 ẢNH THI CÔNG TUẦN ${wk}/${yr} (${finalPhotos.length} ảnh)
           </div>
           <div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA">
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
@@ -1043,4 +1053,170 @@ async function handleReportPhotoUpload(input) {
     loading(false)
     input.value = ''
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHỌN & SẮP XẾP ẢNH THI CÔNG CHO PDF
+// ═══════════════════════════════════════════════════════════
+async function openPhotoSelector() {
+  const proj = STATE.currentProject
+  const week = getISOWeek(new Date())
+  const year = new Date().getFullYear()
+
+  // Tải tất cả ảnh tuần này
+  const { data: allPhotos } = await sb.from('task_photos')
+    .select('id,photo_url,caption,taken_at,task_id,tasks(name)')
+    .eq('project_id', proj.id)
+    .eq('week_number', week)
+    .eq('year', year)
+    .order('taken_at', { ascending: false })
+
+  if (!allPhotos?.length) {
+    toast('Chưa có ảnh tuần này', ''); return
+  }
+
+  // Nếu chưa có danh sách đã chọn, dùng 9 ảnh mới nhất làm mặc định
+  if (!window._selectedPhotos) {
+    window._selectedPhotos = allPhotos.slice(0, 9).map(p => ({ ...p }))
+  }
+
+  const renderSelector = () => {
+    const selectedIds = (window._selectedPhotos || []).map(p => p.id || p.photo_url)
+
+    const allGrid = allPhotos.map(p => {
+      const isSelected = selectedIds.includes(p.id || p.photo_url)
+      const selIdx     = selectedIds.indexOf(p.id || p.photo_url)
+      const label      = !p.task_id ? (p.caption || 'Ảnh tổng thể') : (p.tasks?.name || '—')
+      const date       = p.taken_at ? new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : ''
+      return `
+        <div data-pid="${p.id}" data-url="${p.photo_url}" data-label="${encodeURIComponent(label||'')}" data-date="${date}" onclick="_handlePhotoClick(this)"
+          style="border-radius:8px;overflow:hidden;border:2px solid ${isSelected?'var(--blue)':'var(--gray2)'};
+            cursor:pointer;position:relative;background:white">
+          <div style="width:100%;padding-top:66%;position:relative;background:var(--gray1)">
+            <img src="${p.photo_url}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover">
+            ${isSelected ? `<div style="position:absolute;top:4px;left:4px;background:var(--blue);color:white;
+              border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+              font-size:12px;font-weight:700">${selIdx+1}</div>` : ''}
+          </div>
+          <div style="padding:4px 6px;font-size:10px;color:var(--gray6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${label}
+          </div>
+          <div style="padding:0 6px 4px;font-size:9px;color:var(--gray4)">${date}</div>
+        </div>`
+    }).join('')
+
+    // Danh sách đã chọn (có thể kéo thả)
+    const selList = (window._selectedPhotos || []).map((p, i) => {
+      const label = !p.task_id ? (p.caption || 'Ảnh tổng thể') : (p.tasks?.name || p.caption || '—')
+      return `
+        <div id="sel-item-${i}" draggable="true"
+          ondragstart="dragPhotoStart(${i})"
+          ondragover="event.preventDefault()"
+          ondrop="dragPhotoDrop(${i})"
+          style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:white;
+            border:1px solid var(--gray2);border-radius:6px;cursor:grab;margin-bottom:4px">
+          <span style="background:var(--blue);color:white;border-radius:50%;width:20px;height:20px;
+            display:flex;align-items:center;justify-content:center;font-size:11px;
+            font-weight:700;flex-shrink:0">${i+1}</span>
+          <img src="${p.photo_url}" style="width:40px;height:30px;object-fit:cover;border-radius:4px;flex-shrink:0">
+          <span style="font-size:11px;color:var(--gray7);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</span>
+          <span style="font-size:10px;color:var(--gray4);cursor:pointer;padding:2px 6px"
+            onclick="removeSelectedPhoto(${i})">✕</span>
+        </div>`
+    }).join('')
+
+    document.getElementById('ps-all-grid').innerHTML = allGrid
+    document.getElementById('ps-sel-list').innerHTML = selList || '<div style="color:var(--gray4);font-size:12px;padding:8px">Chưa chọn ảnh nào</div>'
+    document.getElementById('ps-sel-count').textContent = `${(window._selectedPhotos||[]).length}/9 ảnh`
+  }
+
+  // Mở modal chọn ảnh
+  openModal('🖼️ Chọn & sắp xếp ảnh thi công cho PDF', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;min-height:55vh">
+      <!-- Trái: tất cả ảnh -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:8px">
+          📷 Tất cả ảnh tuần ${week} (${allPhotos.length} ảnh) — Click để chọn/bỏ chọn
+        </div>
+        <div id="ps-all-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+          max-height:calc(55vh - 40px);overflow-y:auto"></div>
+      </div>
+      <!-- Phải: đã chọn + sắp xếp -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:8px;
+          display:flex;justify-content:space-between">
+          <span>✅ Đã chọn (kéo thả để sắp xếp)</span>
+          <span id="ps-sel-count" style="color:var(--blue)">0/9 ảnh</span>
+        </div>
+        <div id="ps-sel-list" style="max-height:calc(55vh - 40px);overflow-y:auto"></div>
+      </div>
+    </div>
+  `, `
+    <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+      <button class="btn btn-secondary btn-sm" onclick="resetPhotoSelection()">↩ Reset về mặc định</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" onclick="confirmPhotoSelection()">✅ Xác nhận thứ tự</button>
+      </div>
+    </div>
+  `)
+
+  const m = document.querySelector('.modal')
+  m.style.maxWidth = '800px'
+  m.style.maxHeight = '90vh'
+  renderSelector()
+  window._renderPhotoSelector = renderSelector
+}
+
+function togglePhotoSelect(id, url, label, date) {
+  const sel = window._selectedPhotos || []
+  const idx = sel.findIndex(p => (p.id||p.photo_url) === (id||url))
+  if (idx >= 0) {
+    sel.splice(idx, 1)
+  } else {
+    if (sel.length >= 9) { toast('Tối đa 9 ảnh cho PDF', 'error'); return }
+    // Tìm full photo object
+    sel.push({ id, photo_url: url, caption: label, taken_at: date, task_id: null })
+  }
+  window._selectedPhotos = sel
+  if (window._renderPhotoSelector) window._renderPhotoSelector()
+}
+
+function removeSelectedPhoto(idx) {
+  window._selectedPhotos.splice(idx, 1)
+  if (window._renderPhotoSelector) window._renderPhotoSelector()
+}
+
+let _dragIdx = null
+function dragPhotoStart(idx) { _dragIdx = idx }
+function dragPhotoDrop(targetIdx) {
+  if (_dragIdx === null || _dragIdx === targetIdx) return
+  const arr   = window._selectedPhotos
+  const moved = arr.splice(_dragIdx, 1)[0]
+  arr.splice(targetIdx, 0, moved)
+  _dragIdx = null
+  if (window._renderPhotoSelector) window._renderPhotoSelector()
+}
+
+function resetPhotoSelection() {
+  window._selectedPhotos = null
+  if (window._renderPhotoSelector) window._renderPhotoSelector()
+  toast('Đã reset về 9 ảnh mới nhất', '')
+}
+
+function confirmPhotoSelection() {
+  const count = (window._selectedPhotos||[]).length
+  closeModal()
+  // Cập nhật label trong footer modal báo cáo
+  const lbl = document.getElementById('report-photo-count-label')
+  if (lbl) lbl.textContent = `Ảnh thi công (${count})`
+  toast(`✅ Đã chọn ${count} ảnh theo thứ tự mong muốn`, 'success')
+}
+
+function _handlePhotoClick(el) {
+  const id    = el.dataset.pid
+  const url   = el.dataset.url
+  const label = decodeURIComponent(el.dataset.label || '')
+  const date  = el.dataset.date
+  togglePhotoSelect(id, url, label, date)
 }
