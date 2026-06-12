@@ -312,14 +312,14 @@ function openUpdateModal(taskId) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
         <div>
           <div style="font-size:11px;color:var(--gray5);margin-bottom:4px">Ngày bắt đầu TT</div>
-          <input type="date" id="upd-tt-start-date" value="${t.tt_start||today}"
+          <input type="date" id="upd-tt-start-date" value="${toISO(t.tt_start)||today}"
             style="width:100%;padding:6px 8px;border:1px solid var(--gray3);border-radius:6px;font-size:13px">
         </div>
         <div>
           <div style="font-size:11px;color:var(--gray5);margin-bottom:4px">
             Ngày hoàn thành TT <span style="color:var(--amber);font-size:10px">(chỉ điền khi 100%)</span>
           </div>
-          <input type="date" id="upd-tt-finish-date" value="${t.tt_finish||''}"
+          <input type="date" id="upd-tt-finish-date" value="${toISO(t.tt_finish)||''}"
             style="width:100%;padding:6px 8px;border:1px solid var(--gray3);border-radius:6px;font-size:13px">
         </div>
       </div>
@@ -548,6 +548,20 @@ async function saveProgress(taskId) {
 // ═══════════════════════════════════════════════════════════
 
 // ── Helpers format ngày DD/MM/YYYY ──────────────────────────
+// Normalize bất kỳ format ngày nào về YYYY-MM-DD cho input type="date"
+function toISO(dateStr) {
+  if (!dateStr) return ''
+  // Đã là ISO
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.slice(0,10)
+  // DD/MM/YYYY
+  const m1 = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`
+  // MM/DD/YYYY (browser format)
+  const m2 = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`
+  return ''
+}
+
 function fmtDMY(isoStr) {
   if (!isoStr) return ''
   const d = new Date(isoStr)
