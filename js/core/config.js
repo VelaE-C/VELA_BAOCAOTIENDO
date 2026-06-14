@@ -118,6 +118,29 @@ function computeRollupDelay(tasks) {
       return
     }
 
+    // ── GUARD: Summary đã hoàn thành → không rollup từ children ──────────
+    // display_pct đã được set bởi computeRollupPct() chạy trước
+    const parentPct = parent.display_pct !== undefined ? parent.display_pct : (parent.pct_complete || 0)
+    if (parentPct === 100) {
+      // Dùng tt_finish (nếu có) so với kh_finish để tính lệch thực tế
+      const khEnd    = parent.kh_finish ? new Date(parent.kh_finish) : null
+      const ttFinish = parent.tt_finish ? new Date(parent.tt_finish) : null
+      if (ttFinish && khEnd) {
+        const d = Math.round((ttFinish - khEnd) / 86400000)
+        const label = d > 0  ? `Trễ ${d} ngày`
+                    : d < 0  ? `Hoàn thành sớm ${Math.abs(d)} ngày`
+                    : `Đúng KH`
+        parent._delay = d
+        parent._delayLabel = label
+        parent._delayDetail = { delayDays: d, label, done: true, hasUnit: false }
+      } else {
+        parent._delay = 0
+        parent._delayLabel = 'Đúng KH'
+        parent._delayDetail = { delayDays: 0, label: 'Đúng KH', done: true, hasUnit: false }
+      }
+      return
+    }
+
     // Max delay trong con (đã được tính ở bước trước vì sort bottom-up)
     const maxDelay = directChildren.reduce((mx, c) => Math.max(mx, c._delay || 0), 0)
     const worstChild = directChildren.find(c => (c._delay || 0) === maxDelay)
