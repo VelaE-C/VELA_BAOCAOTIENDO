@@ -143,6 +143,26 @@ function getGanttStatus(task) {
 
 // ── Tam suất: tính lệch theo velocity ────────────────────────────────────
 function calcProgressDetail(task) {
+  // ── GUARD: Summary đã hoàn thành (display_pct=100) ──────────────────────
+  // Không dùng rollup từ children — tránh hiện "Trễ Xd" khi task đã đóng sổ
+  const _pct = task.display_pct !== undefined ? task.display_pct : (task.pct_complete || 0)
+  if (task.is_summary && _pct === 100) {
+    const khEnd    = task.kh_finish ? new Date(task.kh_finish) : null
+    const ttFinish = task.tt_finish ? new Date(task.tt_finish) : null
+    if (ttFinish && khEnd) {
+      const d = Math.round((ttFinish - khEnd) / 86400000)
+      return {
+        delayDays: d,
+        label: d > 0  ? `Trễ ${d} ngày`
+             : d < 0  ? `Hoàn thành sớm ${Math.abs(d)} ngày`
+             : `Đúng KH`,
+        done: true, hasUnit: false
+      }
+    }
+    // Không có tt_finish → đóng sổ, báo Đúng KH
+    return { delayDays: 0, label: 'Đúng KH', done: true, hasUnit: false }
+  }
+
   // Summary tasks: use pre-computed rollup delay (max of children)
   if (task.is_summary && task._delayDetail !== undefined) {
     return task._delayDetail
