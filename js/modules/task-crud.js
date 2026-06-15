@@ -102,7 +102,7 @@ function openAddTaskModal(parentId = null) {
     </div>
   `, `
     <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
-    <button class="btn btn-primary" onclick="saveNewTask()">➕ Thêm công tác</button>
+    <button class="btn btn-primary" id="btn-save-task" onclick="this.disabled=true;this.textContent='⏳ Đang thêm...';saveNewTask()">➕ Thêm công tác</button>
   `)
 }
 
@@ -150,21 +150,13 @@ async function saveNewTask() {
     outline_level = parent.outline_level + 1
 
     // sort_order: after last descendant of parent
+    // Dùng số thập phân (maxSort + 0.5) thay vì shift toàn bộ → nhanh hơn, không conflict
     const descendants = STATE.tasks.filter(t =>
       t.wbs_code.startsWith(parent.wbs_code + '.')
     )
     const maxSort = descendants.reduce((m,t) => t.sort_order > m ? t.sort_order : m,
       parent.sort_order)
-    sort_order = maxSort + 1
-
-    // Shift sort_order of tasks after this position
-    // Sort DESC trước để tránh unique constraint conflict (update lớn trước, nhỏ sau)
-    const toShift = STATE.tasks
-      .filter(t => t.sort_order > maxSort && t.id !== parentId)
-      .sort((a, b) => b.sort_order - a.sort_order)
-    for (const t of toShift) {
-      await sb.from('tasks').update({ sort_order: t.sort_order + 1 }).eq('id', t.id)
-    }
+    sort_order = maxSort + 0.5  // Không cần shift các task khác
   }
 
   // Generate a unique msp_uid (use negative numbers for manually added tasks)
