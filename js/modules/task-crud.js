@@ -158,7 +158,10 @@ async function saveNewTask() {
     sort_order = maxSort + 1
 
     // Shift sort_order of tasks after this position
-    const toShift = STATE.tasks.filter(t => t.sort_order > maxSort && t.id !== parentId)
+    // Sort DESC trước để tránh unique constraint conflict (update lớn trước, nhỏ sau)
+    const toShift = STATE.tasks
+      .filter(t => t.sort_order > maxSort && t.id !== parentId)
+      .sort((a, b) => b.sort_order - a.sort_order)
     for (const t of toShift) {
       await sb.from('tasks').update({ sort_order: t.sort_order + 1 }).eq('id', t.id)
     }
