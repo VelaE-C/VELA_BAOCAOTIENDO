@@ -1131,14 +1131,16 @@ function openBulkUnitPrice() {
         </td>
         <td style="padding:4px 6px;text-align:center">
           <div style="display:flex;align-items:center;gap:4px;justify-content:center">
-            <input type="number" class="up-input form-input"
+            <input type="text" class="up-input form-input"
               data-task-id="${t.id}"
               data-qty="${qty||1}"
+              data-raw="${t.unit_price||0}"
               style="padding:6px 12px;font-size:15px;width:200px;text-align:right;font-weight:500"
-              value="${t.unit_price||''}"
+              value="${t.unit_price > 0 ? Number(t.unit_price).toLocaleString('vi-VN') : ''}"
               placeholder="0"
-              min="0" step="1000"
-              oninput="updateUPRow(this)">
+              oninput="updateUPRow(this)"
+              onfocus="this.value=this.dataset.raw>0?this.dataset.raw:''"
+              onblur="formatUPInput(this)">
             <span style="font-size:11px;color:var(--gray5)">₫</span>
           </div>
         </td>
@@ -1203,24 +1205,32 @@ function openBulkUnitPrice() {
   m.style.maxHeight = '95vh'
 }
 
+function formatUPInput(inp) {
+  // Khi blur: format số có dấu chấm, lưu raw vào data-raw
+  const raw = parseFloat(inp.value.replace(/\./g, '').replace(/,/g, '')) || 0
+  inp.dataset.raw = raw
+  inp.value = raw > 0 ? raw.toLocaleString('vi-VN') : ''
+}
+
 function updateUPRow(inp) {
   const taskId  = inp.dataset.taskId
   const task    = STATE.tasks.find(t => t.id === inp.dataset.taskId)
   const qty     = parseFloat(inp.dataset.qty) || task?.planned_quantity || 1
-  const price   = parseFloat(inp.value) || 0
+  // Parse số từ text (bỏ dấu chấm phân cách)
+  const price   = parseFloat(inp.value.replace(/\./g, '').replace(/,/g, '')) || 0
   const val     = price * qty
 
   // Update contract cell
   const cell = document.querySelector(`.up-contract[data-task-id="${taskId}"]`)
   if (cell) {
-    cell.textContent = val > 0 ? val.toFixed(0) + ' M' : '—'
+    cell.textContent = val > 0 ? val.toLocaleString('vi-VN') + ' ₫' : '—'
     cell.style.color = val > 0 ? 'var(--navy)' : 'var(--gray3)'
   }
 
   // Update tổng
   let total = 0
   document.querySelectorAll('.up-input').forEach(i => {
-    const p = parseFloat(i.value) || 0
+    const p = parseFloat(i.value.replace(/\./g, '').replace(/,/g, '')) || 0
     const q = parseFloat(i.dataset.qty) || 1
     total += p * q
   })
@@ -1235,7 +1245,7 @@ function updateUPRow(inp) {
   document.querySelectorAll('.up-input').forEach(i => {
     const task = STATE.tasks.find(t => t.id === i.dataset.taskId)
     const oldPrice = task?.unit_price || 0
-    const newPrice = parseFloat(i.value) || 0
+    const newPrice = parseFloat(i.value.replace(/\./g, '').replace(/,/g, '')) || 0
     if (oldPrice !== newPrice) changed++
   })
   const countEl = document.getElementById('up-changed-count')
@@ -1250,7 +1260,7 @@ async function saveBulkUnitPrice() {
     const taskId  = inp.dataset.taskId
     const task    = STATE.tasks.find(t => t.id === taskId)
     const oldPrice = task?.unit_price || 0
-    const newPrice = parseFloat(inp.value) || 0
+    const newPrice = parseFloat(inp.value.replace(/\./g, '').replace(/,/g, '')) || 0
     if (oldPrice !== newPrice) changes.push({ taskId, newPrice })
   })
 
