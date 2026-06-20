@@ -180,9 +180,15 @@ ${lvl3SummaryClean || 'Không có dữ liệu'}
 ${(() => {
       if (!STATE._attendanceData) return ''
       const hist = STATE._attendanceData.history || []
-      const avg7 = STATE._attendanceData.avgCN7day || STATE._attendanceData.avgCN7 || 0
-      const first3 = hist.slice(0,3).map(h => h.cn_proj||0)
-      const last3  = hist.slice(-3).map(h => h.cn_proj||0)
+      // Chỉ dùng 7 ngày cuối — hist có thể chứa 25-30 ngày (dùng cho chart)
+      const hist7 = hist.slice(-7)
+      // Tính TB 7 ngày thực tế từ data, không dùng avgCN7day/avgCN7 vì có thể undefined hoặc TB30
+      const avg7 = hist7.length
+        ? Math.round(hist7.reduce((s,h) => s+(h.cn_proj||0), 0) / hist7.length)
+        : (STATE._attendanceData.avgCN7day || STATE._attendanceData.avgCN7 || 0)
+      // Xu hướng tính từ 7 ngày cuối
+      const first3 = hist7.slice(0,3).map(h => h.cn_proj||0)
+      const last3  = hist7.slice(-3).map(h => h.cn_proj||0)
       const avgFirst = first3.length ? Math.round(first3.reduce((s,v)=>s+v,0)/first3.length) : 0
       const avgLast  = last3.length  ? Math.round(last3.reduce((s,v)=>s+v,0)/last3.length)  : 0
       const trend = avgLast - avgFirst
@@ -190,8 +196,10 @@ ${(() => {
                      : trend < -5 ? `(xu hướng GIẢM ${Math.abs(trend)} CN/ngày so với đầu tuần)`
                      : '(ổn định trong tuần)'
       const lastDay = hist[hist.length-1] || {}
-      const minCN = Math.min(...hist.map(h=>h.cn_proj||0))
-      const maxCN = Math.max(...hist.map(h=>h.cn_proj||0))
+      // Chỉ lấy 7 ngày cuối để tính min/max — tránh dùng 30 ngày của chart dashboard
+      const last7 = hist.slice(-7)
+      const minCN = last7.length ? Math.min(...last7.map(h=>h.cn_proj||0)) : 0
+      const maxCN = last7.length ? Math.max(...last7.map(h=>h.cn_proj||0)) : 0
       return `QUÂN SỐ 7 NGÀY GẦN NHẤT:
 - TB 7 ngày (tuần báo cáo): ${avg7} CN/ngày ${trendStr} | Min: ${minCN} | Max: ${maxCN}
 - Ngày gần nhất: ${lastDay.cn_proj||0} CN · BCH: ${lastDay.total_bch||0}
