@@ -23,28 +23,60 @@ async function generateAISummary() {
     const done = leaf.filter(t => (t.pct_complete||0) === 100)
     const notStarted = leaf.filter(t => !t.tt_start && t.kh_start && new Date(t.kh_start) < new Date())
 
-    // Top 5 worst delays
-    const worstTasks = late.slice(0,5).map(t =>
-      `- ${t.name}: trễ ${t._delay} ngày, hiện ${t.pct_complete||0}%${t._delayLabel ? ' ('+t._delayLabel+')' : ''}`
-    ).join('\n')
-
-
     // Summary stats
-    // Dùng % của root task (roll-up có trọng số) thay vì avg leaf — giống Dashboard
     const rootTask = tasks.find(t => t.outline_level === 1)
     const totalPct = rootTask
       ? (rootTask.display_pct !== undefined ? rootTask.display_pct : (rootTask.pct_complete||0))
       : (leaf.length > 0 ? Math.round(leaf.reduce((s,t)=>s+(t.display_pct||t.pct_complete||0),0)/leaf.length) : 0)
-    const lateCount = late.length
-    const avgDelay = late.length > 0 ? Math.round(late.reduce((s,t)=>s+(t._delay||0),0)/late.length) : 0
 
-    // Level 2 summary
-    const lvl2 = tasks.filter(t => t.is_summary && t.outline_level === 2)
-    const lvl2Summary = lvl2.map(t =>
-      `- ${t.name}: ${t.display_pct||t.pct_complete||0}% (${t._delayLabel||'Đúng KH'})`
-    ).join('\n')
+    // ── TIMELINE: dùng root task kh_start/kh_finish (đã cập nhật sau điều chỉnh) ──
+    // Không dùng getActualTimeline() vì nó lấy max của tất cả tasks, không phản ánh
+    // timeline hiện hành sau khi BCH điều chỉnh tiến độ
+    const currentStart  = rootTask?.kh_start  || null
+    const currentFinish = rootTask?.kh_finish || null
 
-    // Query lịch sử 3 tuần gần nhất để so sánh xu hướng
+    const fmtVN = d => d ? new Date(d).toLocaleDateString('vi-VN') : '—'
+    const actualStartDate = fmtVN(currentStart)
+    const actualEndDate   = fmtVN(currentFinish)
+
+    // % thời gian đã qua tính từ root task timeline (hiện hành)
+    let timeElapsedPct = '—'
+    let daysRemaining = '—'
+    if (currentStart && currentFinish) {
+      const [sy,sm,sd] = currentStart.split('-').map(Number)
+      const [ey,em,ed] = currentFinish.split('-').map(Number)
+      const startMs = new Date(sy, sm-1, sd).getTime()
+      const endMs   = new Date(ey, em-1, ed).getTime()
+      const nowMs   = new Date().setHours(0,0,0,0)
+      const totalMs = endMs - startMs
+      const elapsed = nowMs - startMs
+      const pctTime = Math.max(0, Math.min(100, Math.round(elapsed / totalMs * 100)))
+      timeElapsedPct = pctTime + '%'
+      daysRemaining  = Math.max(0, Math.round((endMs - nowMs) / 86400000)) + ' ngày'
+    }
+
+    // ── LỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ từ schedule_revisions ──
+    let revisionContext = ''
+    try {
+      const { data: revisions } = await sb.from('schedule_revisions')
+        .select('revision_name, reason, effective_date, delta_days, affected_count, created_at')
+        .eq('project_id', proj.id)
+        .order('created_at', { ascending: true })
+
+      if (revisions?.length) {
+        const totalDelta = revisions.reduce((s, r) => s + (r.delta_days || 0), 0)
+        revisionContext = `\nLỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ (${revisions.length} lần, tổng +${totalDelta} ngày so với baseline gốc):\n`
+        revisions.forEach((r, i) => {
+          const d = r.effective_date ? new Date(r.effective_date).toLocaleDateString('vi-VN') : '—'
+          revisionContext += `- Lần ${i+1} (${d}): ${r.revision_name} — ${r.reason}`
+          if (r.delta_days) revisionContext += ` [+${r.delta_days} ngày, ${r.affected_count||0} công tác]`
+          revisionContext += '\n'
+        })
+        revisionContext += `→ Timeline hiện hành đã được CĐT chấp thuận điều chỉnh. Khi đánh giá tiến độ, so sánh với TIMELINE HIỆN HÀNH (${actualEndDate}), KHÔNG so với baseline gốc.\n`
+      }
+    } catch(e) { /* bỏ qua nếu bảng chưa có data */ }
+
+    // ── LỊCH SỬ AI CÁC TUẦN TRƯỚC ──
     let historyContext = ''
     try {
       const { data: recentHistory } = await sb.from('ai_summaries')
@@ -61,33 +93,13 @@ async function generateAISummary() {
         })
         historyContext += '(So sánh với tuần hiện tại để đánh giá xu hướng tốt hơn hay xấu hơn)\n'
       }
-    } catch(e) {
-      // Bảng chưa có dữ liệu lịch sử — bỏ qua
-    }
-
-    // Tính timeline thực tế từ task (bỏ qua project.start_date từ XML không chính xác)
-    const tlActual = getActualTimeline(tasks)
-    const actualStartDate = tlActual ? tlActual.start.toLocaleDateString('vi-VN') : proj.start_date
-    const actualEndDate   = tlActual ? tlActual.end.toLocaleDateString('vi-VN')   : proj.finish_date
-
-    // Tính % thời gian đã qua dựa trên task dates thực tế (không phải XML project dates)
-    let timeElapsedPct = '—'
-    if (tlActual) {
-      const totalMs  = tlActual.end - tlActual.start
-      const elapsedMs = new Date() - tlActual.start
-      const pctTime = Math.max(0, Math.min(100, Math.round(elapsedMs / totalMs * 100)))
-      timeElapsedPct = pctTime + '%'
-    }
+    } catch(e) { /* bỏ qua */ }
 
     // Chỉ lấy task trễ CÓ delay hợp lệ (> 0, không null)
     const validLate = late.filter(t => t._delay > 0 && t._delay < 500)
     const validAvgDelay = validLate.length > 0
       ? Math.round(validLate.reduce((s,t) => s+(t._delay||0), 0) / validLate.length)
       : 0
-    const validWorstTasks = validLate.slice(0,5).map(t =>
-      '- ' + t.name + ': trễ ' + t._delay + ' ngày, đạt ' + (t.pct_complete||0) + '%'
-        + (t._delayLabel && t._delayLabel !== '—' ? ' (' + t._delayLabel + ')' : '')
-    ).join('\n')
 
     // Chưa bắt đầu hợp lệ (kh_start trong vòng 60 ngày qua)
     const now60 = new Date(); now60.setDate(now60.getDate() - 60)
@@ -95,8 +107,7 @@ async function generateAISummary() {
       t.kh_start && new Date(t.kh_start) >= now60
     )
 
-    // Level 2 summary — bỏ hạng mục delay bất thường (> 365 ngày)
-    // Nhóm 1: Task đang thi công (chiến trường thực sự tuần này)
+    // Nhóm 1: Task đang thi công
     const inProgress = leaf.filter(t => t.tt_start && (t.pct_complete||0) < 100)
     const inProgressSummary = inProgress.slice(0,10).map(t => {
       const pct = t.pct_complete||0
@@ -106,13 +117,13 @@ async function generateAISummary() {
       return '- ' + t.name + ': ' + pct + '%' + delayStr + noteStr
     }).join('\n')
 
-    // Nhóm 2: Task trễ hợp lệ kèm ghi chú (nếu có)
+    // Nhóm 2: Task trễ hợp lệ kèm ghi chú
     const lateWithNote = validLate.slice(0,8).map(t => {
       const noteStr = t.latest_note ? ' | Ghi chú: ' + t.latest_note : ''
       return '- ' + t.name + ': trễ ' + t._delay + ' ngày, đạt ' + (t.pct_complete||0) + '%' + noteStr
     }).join('\n')
 
-    // Nhóm 3: Level 3 summary (chi tiết hơn level 2 cho BGĐ)
+    // Nhóm 3: Level 3 summary
     const lvl3Clean = tasks.filter(t => t.is_summary && t.outline_level === 3)
     const lvl3SummaryClean = lvl3Clean.map(t => {
       const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
@@ -120,26 +131,22 @@ async function generateAISummary() {
       let status = 'Đúng KH'
       if (delay > 0 && delay < 365) status = 'Trễ ' + delay + ' ngày'
       else if (delay < 0) status = 'Sớm ' + Math.abs(delay) + ' ngày'
-      // Tìm parent level 2 để thêm context
       const parent = tasks.find(p => p.is_summary && p.outline_level === 2
         && t.wbs_code && p.wbs_code && t.wbs_code.startsWith(p.wbs_code + '.'))
       const parentPrefix = parent ? '[' + parent.name.slice(0,20) + '] ' : ''
       return '- ' + parentPrefix + t.name + ': ' + pct + '% (' + status + ')'
     }).join('\n')
 
-    // Giữ lvl2SummaryClean cho backward compat
-    const lvl2SummaryClean = lvl3SummaryClean
-
     const prompt = `Bạn là trợ lý phân tích dự án xây dựng. Nhiệm vụ: viết báo cáo tuần cho BAN GIÁM ĐỐC — ngắn gọn, số liệu macro, tập trung vào quyết định và rủi ro. KHÔNG liệt kê chi tiết từng task. KHÔNG dùng ngôn ngữ kỹ thuật chuyên sâu.
 
 DỰ ÁN: ${proj.name} (${proj.code})
 NGÀY BÁO CÁO: ${today} - Tuần ${week}
-THỜI GIAN THI CÔNG: ${actualStartDate} → ${actualEndDate}
+TIMELINE HIỆN HÀNH: ${actualStartDate} → ${actualEndDate} (còn ${daysRemaining})
 TIẾN ĐỘ: Đã đi ${timeElapsedPct} thời gian thi công, hoàn thành ${totalPct}% khối lượng
-
+${revisionContext}
 TỔNG QUAN:
-- Tổng công tác: ${leaf.length} | Hoàn thành: ${done.length} | Đang thi công: ${leaf.filter(t=>t.tt_start&&(t.pct_complete||0)<100).length}
-- Chậm tiến độ: ${validLate.length} công tác | Trễ trung bình: ${validAvgDelay} ngày (ĐÂY LÀ SỐ CHÍNH XÁC TỪ HỆ THỐNG — dùng con số này, KHÔNG tự tính lại)
+- Tổng công tác: ${leaf.length} | Hoàn thành: ${done.length} | Đang thi công: ${inProgress.length}
+- Chậm tiến độ: ${validLate.length} công tác | Trễ trung bình: ${validAvgDelay} ngày (SỐ CHÍNH XÁC TỪ HỆ THỐNG — dùng con số này, KHÔNG tự tính lại)
 - Chưa bắt đầu (quá hạn trong 60 ngày gần đây): ${validNotStarted.length} công tác
 - % hoàn thành tổng thể: ${totalPct}%
 ${historyContext}
@@ -154,13 +161,8 @@ ${lvl3SummaryClean || 'Không có dữ liệu'}
 
 ${(() => {
       if (!STATE._attendanceData) return ''
-      const c    = STATE._attendanceData.current
       const hist = STATE._attendanceData.history || []
-      // avgCN7day = TB 7 ngày thực (đúng với tuần báo cáo)
-      // avgCN7    = TB 30 ngày (cho chart, không dùng trong AI)
       const avg7 = STATE._attendanceData.avgCN7day || STATE._attendanceData.avgCN7 || 0
-
-      // Xu hướng: so sánh 3 ngày đầu vs 3 ngày cuối trong 7 ngày
       const first3 = hist.slice(0,3).map(h => h.cn_proj||0)
       const last3  = hist.slice(-3).map(h => h.cn_proj||0)
       const avgFirst = first3.length ? Math.round(first3.reduce((s,v)=>s+v,0)/first3.length) : 0
@@ -169,7 +171,6 @@ ${(() => {
       const trendStr = trend > 5  ? `(xu hướng TĂNG +${trend} CN/ngày so với đầu tuần)`
                      : trend < -5 ? `(xu hướng GIẢM ${Math.abs(trend)} CN/ngày so với đầu tuần)`
                      : '(ổn định trong tuần)'
-
       const lastDay = hist[hist.length-1] || {}
       const minCN = Math.min(...hist.map(h=>h.cn_proj||0))
       const maxCN = Math.max(...hist.map(h=>h.cn_proj||0))
@@ -180,34 +181,35 @@ ${(() => {
 `
     })()}${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
 LƯU Ý QUAN TRỌNG:
-- Chỉ đánh giá dựa trên dữ liệu được cung cấp ở trên
-- Không suy diễn hoặc phóng đại số liệu
-- Nếu delay > 100 ngày mà % hoàn thành = 0 và chưa có tt_start → có thể là task chưa đến giai đoạn thi công, không phải trễ thực sự
-- % thời gian đã qua được tính từ ngày bắt đầu thi công thực tế (không phải ngày tạo file kế hoạch)
+- Timeline hiện hành đã bao gồm tất cả điều chỉnh được CĐT chấp thuận — đây là mốc đúng để đánh giá
+- % thời gian đã qua = tính từ timeline hiện hành, KHÔNG phải baseline gốc
+- Nếu có lịch sử điều chỉnh, nêu ngắn gọn "dự án đã điều chỉnh X lần, tổng +Y ngày do [lý do chính]"
+- Chỉ đánh giá dựa trên dữ liệu được cung cấp ở trên, không suy diễn
+- Nếu delay > 100 ngày mà % = 0 và chưa có tt_start → task chưa đến giai đoạn, không phải trễ thực sự
 
 YÊU CẦU OUTPUT — viết đúng 4 mục sau, mỗi mục tối đa 3-4 câu, dùng bullet (•) nếu cần liệt kê:
 
 ## 1. TỔNG QUAN TIẾN ĐỘ
-Một câu đánh giá tổng thể: dự án đang ở đâu so với kế hoạch (% TH vs % thời gian đã qua, còn bao nhiêu ngày). Nêu 1 điểm tích cực nếu có. KHÔNG liệt kê từng công tác.
+Đánh giá tổng thể: % HT vs % thời gian đã qua theo timeline HIỆN HÀNH, còn bao nhiêu ngày. Nếu timeline đã điều chỉnh, nêu rõ "so với kế hoạch hiện hành đã được CĐT chấp thuận". Nêu 1 điểm tích cực nếu có.
 
 ## 2. CẢNH BÁO TIMELINE DỰ ÁN
-Dự án/gói nào đang lệch tiến độ nghiêm trọng (>15%)? Ước tính nguy cơ trễ deadline bao nhiêu tuần/tháng nếu không can thiệp? Mức độ: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
+Gói nào đang lệch tiến độ nghiêm trọng so với KH HIỆN HÀNH (>15%)? Nguy cơ trễ deadline hiện hành bao nhiêu tuần? Mức độ: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
 
 ## 3. RỦI RO TUẦN TỚI
-Rủi ro nào có thể xảy ra trong 2-3 tuần tới? (VD: deadline con sắp đến, phụ thuộc nhà thầu phụ, thời tiết, phê duyệt CĐT...). Tập trung vào rủi ro có thể phòng ngừa NGAY.
+Rủi ro nào có thể xảy ra trong 2-3 tuần tới? Tập trung vào rủi ro có thể phòng ngừa NGAY.
 
 ## 4. VẤN ĐỀ KỸ THUẬT CẦN LƯU Ý KHI CHUYỂN CÔNG TÁC
-Gói công việc nào sắp bàn giao sang giai đoạn tiếp theo? Điều kiện tiên quyết chưa đủ? BCH cần chuẩn bị gì? (VD: nghiệm thu kết cấu trước khi hoàn thiện, MEP trước khi trát tường...)
+Gói nào sắp bàn giao sang giai đoạn tiếp theo? Điều kiện tiên quyết chưa đủ? BCH cần chuẩn bị gì?
 
 QUY TẮC:
-- Viết cho BGĐ — người đọc không cần biết chi tiết kỹ thuật
-- Số liệu macro: %, ngày, tuần — không cần tên task cụ thể trừ khi rất quan trọng
+- Viết cho BGĐ — không cần chi tiết kỹ thuật
+- Số liệu macro: %, ngày, tuần
 - Mỗi mục tối đa 80 từ
 - Dùng **bold** cho con số và cụm từ quan trọng
 - Tông văn: thẳng thắn, quyết đoán, không vòng vo
-- QUAN TRỌNG: Chỉ dùng số liệu được cung cấp trong DATA bên trên. KHÔNG tự tính toán lại hoặc suy diễn con số khác. Nếu so sánh với tuần trước thì chỉ dùng số liệu lịch sử đã cho.`
+- QUAN TRỌNG: Chỉ dùng số liệu được cung cấp. KHÔNG tự tính toán lại.`
 
-    // Gọi qua Supabase Edge Function (tránh CORS khi gọi trực tiếp từ browser)
+    // Gọi qua Supabase Edge Function
     const { data: { session } } = await sb.auth.getSession()
     const token = session?.access_token
     if (!token) throw new Error('Chưa đăng nhập')
@@ -216,11 +218,11 @@ QUY TẮC:
       total: leaf.length, done: done.length,
       late: validLate.length,
       avg_delay: validAvgDelay,
-      total_pct: totalPct,  // % root task (roll-up, giống Dashboard)
+      total_pct: totalPct,
       week
     }
 
-    // Xóa bản cũ cùng tuần/năm trước khi lưu mới (tránh trùng lặp)
+    // Xóa bản cũ cùng tuần/năm trước khi lưu mới
     await sb.from('ai_summaries')
       .delete()
       .eq('project_id', proj.id)
@@ -238,18 +240,14 @@ QUY TẮC:
         project_id:   proj.id,
         project_name: proj.name,
         stats:        statsPayload,
-        max_tokens:   4096  // tăng để tránh bị cắt giữa chừng
+        max_tokens:   4096
       })
     })
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      if (err.error?.includes('CLAUDE_API_KEY')) {
-        throw new Error('EDGE_FUNCTION_NO_KEY')
-      }
-      if (res.status === 404) {
-        throw new Error('EDGE_FUNCTION_NOT_DEPLOYED')
-      }
+      if (err.error?.includes('CLAUDE_API_KEY')) throw new Error('EDGE_FUNCTION_NO_KEY')
+      if (res.status === 404) throw new Error('EDGE_FUNCTION_NOT_DEPLOYED')
       throw new Error(err.error || 'Lỗi server ' + res.status)
     }
 
@@ -261,18 +259,13 @@ QUY TẮC:
 
   } catch(e) {
     loading(false)
-    if (e.message === 'EDGE_FUNCTION_NOT_DEPLOYED') {
-      showEdgeFunctionGuide()
-    } else if (e.message === 'EDGE_FUNCTION_NO_KEY') {
-      showAPIKeyGuide()
-    } else {
-      toast('Lỗi: ' + e.message, 'error')
-    }
+    if (e.message === 'EDGE_FUNCTION_NOT_DEPLOYED') showEdgeFunctionGuide()
+    else if (e.message === 'EDGE_FUNCTION_NO_KEY') showAPIKeyGuide()
+    else toast('Lỗi: ' + e.message, 'error')
   }
 }
 
 function showAISummaryModal(text, date, week, projName) {
-  // Render markdown: ## heading, **bold**, newlines
   function mdRender(t) {
     return t
       .split('\n').map(line => {
@@ -363,7 +356,6 @@ async function showAISummaryHistory() {
     return
   }
 
-  // Lưu data vào global để click handler truy cập
   window._aiHistoryData = history
 
   const rows = history.map(function(h, idx) {
@@ -391,7 +383,6 @@ async function showAISummaryHistory() {
     + '<div id="hist-list" style="border:0.5px solid var(--gray2);border-radius:var(--radius);overflow:hidden">'+rows+'</div>',
     '<button class="btn btn-secondary" onclick="closeModal()">Đóng</button>')
 
-  // Gắn click sau khi modal render xong
   setTimeout(function() {
     document.querySelectorAll('[data-hist-idx]').forEach(function(el) {
       el.addEventListener('click', function() {
