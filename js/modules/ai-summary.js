@@ -56,6 +56,7 @@ async function generateAISummary() {
     }
 
     // ── LỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ từ schedule_revisions ──
+    // Tổng trượt = kh_finish root task - finish_date gốc của project (không cộng delta_days từng revision)
     let revisionContext = ''
     try {
       const { data: revisions } = await sb.from('schedule_revisions')
@@ -63,16 +64,33 @@ async function generateAISummary() {
         .eq('project_id', proj.id)
         .order('created_at', { ascending: true })
 
+      // Tính tổng trượt thực tế: root task kh_finish vs project finish_date (baseline gốc)
+      let totalSlipDays = 0
+      const baselineFinish = proj.finish_date || proj.baseline_finish || null
+      if (baselineFinish && currentFinish) {
+        const [by, bm, bd] = baselineFinish.split('-').map(Number)
+        const [cy, cm, cd] = currentFinish.split('-').map(Number)
+        totalSlipDays = Math.round(
+          (new Date(cy, cm-1, cd) - new Date(by, bm-1, bd)) / 86400000
+        )
+      }
+
       if (revisions?.length) {
-        const totalDelta = revisions.reduce((s, r) => s + (r.delta_days || 0), 0)
-        revisionContext = `\nLỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ (${revisions.length} lần, tổng +${totalDelta} ngày so với baseline gốc):\n`
+        const slipStr = totalSlipDays > 0
+          ? `tổng trượt +${totalSlipDays} ngày so với deadline HĐ gốc (${new Date(baselineFinish).toLocaleDateString('vi-VN')})`
+          : totalSlipDays < 0
+          ? `hoàn thành sớm hơn HĐ gốc ${Math.abs(totalSlipDays)} ngày`
+          : `đúng deadline HĐ gốc`
+
+        revisionContext = `\nLỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ (${revisions.length} lần điều chỉnh, ${slipStr}):\n`
         revisions.forEach((r, i) => {
           const d = r.effective_date ? new Date(r.effective_date).toLocaleDateString('vi-VN') : '—'
-          revisionContext += `- Lần ${i+1} (${d}): ${r.revision_name} — ${r.reason}`
-          if (r.delta_days) revisionContext += ` [+${r.delta_days} ngày, ${r.affected_count||0} công tác]`
-          revisionContext += '\n'
+          revisionContext += `- Lần ${i+1} (${d}): ${r.revision_name} — ${r.reason}\n`
         })
-        revisionContext += `→ Timeline hiện hành đã được CĐT chấp thuận điều chỉnh. Khi đánh giá tiến độ, so sánh với TIMELINE HIỆN HÀNH (${actualEndDate}), KHÔNG so với baseline gốc.\n`
+        revisionContext += `→ Deadline hiện hành (${actualEndDate}) đã được CĐT chấp thuận. Khi đánh giá tiến độ hàng tuần, so sánh với DEADLINE HIỆN HÀNH, không phải HĐ gốc.\n`
+      } else if (totalSlipDays !== 0 && baselineFinish && currentFinish) {
+        // Có trượt nhưng chưa có revision record
+        revisionContext = `\nTimeline đã điều chỉnh: trượt +${totalSlipDays} ngày so với HĐ gốc (${new Date(baselineFinish).toLocaleDateString('vi-VN')} → ${actualEndDate}).\n`
       }
     } catch(e) { /* bỏ qua nếu bảng chưa có data */ }
 
