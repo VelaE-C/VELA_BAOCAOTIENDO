@@ -1,14 +1,12 @@
 // ═══════════════════════════════════════════════════════════
-// PAGE: COMPARE WEEKS — VelaE&C v3
+// PAGE: COMPARE WEEKS — VelaE&C
 // ═══════════════════════════════════════════════════════════
-
 function compare() {
   const curWeek = getISOWeek(new Date())
   const weekOptions = (selectedIdx) =>
     Array.from({ length: 10 }, (_, i) => {
       const w = curWeek - i
-      const label = i === 0 ? `Tuần này (${w})` : `Tuần ${w}`
-      return `<option value="${w}" ${i === selectedIdx ? 'selected' : ''}>${label}</option>`
+      return `<option value="${w}" ${i === selectedIdx ? 'selected' : ''}>Tuần ${w}${i===0?' (này)':''}</option>`
     }).join('')
 
   return `
@@ -16,12 +14,12 @@ function compare() {
   <div class="card">
     <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
       <div>
-        <div class="form-label">Tuần so sánh A (cũ hơn)</div>
-        <select class="form-input" id="cmp-week-a" style="width:160px">${weekOptions(2)}</select>
+        <div class="form-label">Tuần A (cũ hơn)</div>
+        <select class="form-input" id="cmp-week-a" style="width:140px">${weekOptions(1)}</select>
       </div>
       <div>
-        <div class="form-label">Tuần so sánh B (mới hơn)</div>
-        <select class="form-input" id="cmp-week-b" style="width:160px">${weekOptions(0)}</select>
+        <div class="form-label">Tuần B (mới hơn)</div>
+        <select class="form-input" id="cmp-week-b" style="width:140px">${weekOptions(0)}</select>
       </div>
       <button class="btn btn-primary" onclick="loadCompare()">🔄 So sánh</button>
     </div>
@@ -29,256 +27,197 @@ function compare() {
   </div>`
 }
 
-// ─── Helpers ────────────────────────────────────────────────
-
 function fmtVND(val) {
-  if (val == null || isNaN(val)) return '—'
+  if (!val || isNaN(val)) return '—'
   const abs = Math.abs(val)
-  const prefix = val < 0 ? '-' : ''
-  if (abs >= 1e9) return prefix + (abs / 1e9).toFixed(2) + ' tỷ'
-  if (abs >= 1e6) return prefix + (abs / 1e6).toFixed(1) + ' tr'
+  const sign = val < 0 ? '-' : ''
+  if (abs >= 1e9) return sign + (abs/1e9).toFixed(2) + ' tỷ'
+  if (abs >= 1e6) return sign + (abs/1e6).toFixed(1) + ' tr'
   return val.toLocaleString('vi-VN') + ' đ'
 }
 
-// Build map: task_id → [children task_ids] và task_id → parent
-function buildTree(tasks) {
-  const childrenMap = {}   // parent_id → [task]
-  const taskMap = {}       // id → task
-  tasks.forEach(t => {
-    taskMap[t.id] = t
-    if (!childrenMap[t.parent_id || '__root__']) childrenMap[t.parent_id || '__root__'] = []
-    childrenMap[t.parent_id || '__root__'].push(t)
-  })
-  return { childrenMap, taskMap }
-}
-
-// ─── Main load ──────────────────────────────────────────────
-
 async function loadCompare() {
   const el = document.getElementById('compare-result')
-  if (!el) return
-  if (!STATE.currentProject) {
-    el.innerHTML = '<div style="color:var(--gray4);padding:20px">Chưa có dự án</div>'
-    return
-  }
+  if (!el || !STATE.currentProject) return
   el.innerHTML = '<span style="color:var(--gray4)">Đang tải...</span>'
 
   const weekA = parseInt(document.getElementById('cmp-week-a')?.value)
   const weekB = parseInt(document.getElementById('cmp-week-b')?.value)
-  const yr = new Date().getFullYear()
+  const yr    = new Date().getFullYear()
 
   if (weekA === weekB) {
-    el.innerHTML = '<div style="color:var(--amber);padding:20px">⚠️ Vui lòng chọn 2 tuần khác nhau</div>'
+    el.innerHTML = '<div style="color:var(--amber);padding:20px">⚠️ Chọn 2 tuần khác nhau</div>'
     return
   }
 
-  // Fetch progress 2 tuần song song
-  const [{ data: progA }, { data: progB }] = await Promise.all([
+  // Fetch tiến độ 2 tuần — lấy bản mới nhất ≤ tuần đó (không bị mất data task đã 100%)
+  const [{ data: rawA }, { data: rawB }] = await Promise.all([
     sb.from('task_progress')
       .select('task_id, pct_complete, note')
       .eq('project_id', STATE.currentProject.id)
-      .eq('week_number', weekA).eq('year', yr),
+      .lte('week_number', weekA).eq('year', yr)
+      .order('week_number', { ascending: false }),
     sb.from('task_progress')
       .select('task_id, pct_complete, note')
       .eq('project_id', STATE.currentProject.id)
-      .eq('week_number', weekB).eq('year', yr)
+      .lte('week_number', weekB).eq('year', yr)
+      .order('week_number', { ascending: false })
   ])
 
-  if (!progA?.length && !progB?.length) {
-    el.innerHTML = '<div style="color:var(--gray4);padding:20px">Chưa có dữ liệu cho 2 tuần này</div>'
-    return
-  }
+  // Lấy bản mới nhất theo task_id (do sort desc, first = newest)
+  const mapA = {}, mapB = {}
+  ;(rawA||[]).forEach(p => { if (!mapA[p.task_id]) mapA[p.task_id] = p })
+  ;(rawB||[]).forEach(p => { if (!mapB[p.task_id]) mapB[p.task_id] = p })
 
-  const mapA = {}; (progA || []).forEach(p => mapA[p.task_id] = p)
-  const mapB = {}; (progB || []).forEach(p => mapB[p.task_id] = p)
-
-  // Set task lá có cập nhật trong ít nhất 1 tuần
-  const activeLeafIds = new Set([...Object.keys(mapA), ...Object.keys(mapB)])
-
-  // Build set các task cha cần hiện (ancestors của leaf đang active)
-  const { childrenMap, taskMap } = buildTree(STATE.tasks)
-
-  // Tìm tất cả ancestor ids của 1 task
-  function getAncestorIds(taskId) {
-    const ids = new Set()
-    let cur = taskMap[taskId]
-    while (cur && cur.parent_id) {
-      ids.add(cur.parent_id)
-      cur = taskMap[cur.parent_id]
+  // Tìm task lá có thay đổi giữa 2 tuần
+  const allIds = new Set([...Object.keys(mapA), ...Object.keys(mapB)])
+  const changedLeafIds = new Set()
+  allIds.forEach(tid => {
+    const task = STATE.tasks.find(t => t.id === tid)
+    if (!task || task.is_summary) return
+    const pctA = mapA[tid]?.pct_complete ?? null
+    const pctB = mapB[tid]?.pct_complete ?? null
+    // Chỉ lấy task có thay đổi thực sự giữa 2 tuần
+    if (pctA !== pctB && (pctA !== null || pctB !== null)) {
+      changedLeafIds.add(tid)
     }
-    return ids
-  }
-
-  const visibleParentIds = new Set()
-  activeLeafIds.forEach(tid => {
-    if (!taskMap[tid]) return
-    getAncestorIds(tid).forEach(aid => visibleParentIds.add(aid))
   })
 
-  // Render đệ quy theo cây WBS
-  let totalTang = 0    // tổng thành tiền tăng
-  let totalGiam = 0    // tổng thành tiền giảm
-  let rowCount = 0
-
-  function renderNode(task, depth) {
-    const isLeaf = !childrenMap[task.id] || childrenMap[task.id].length === 0
-    const isActive = activeLeafIds.has(task.id)
-    const isVisibleParent = visibleParentIds.has(task.id)
-
-    // Ẩn node không liên quan
-    if (!isActive && !isVisibleParent) return ''
-
-    if (!isLeaf || !isActive) {
-      // Render task cha — chỉ làm header nhóm
-      const children = (childrenMap[task.id] || [])
-        .map(c => renderNode(c, depth + 1)).join('')
-
-      if (!children) return '' // không có con nào visible
-
-      const indent = depth * 20
-      return `
-        <tr style="background:var(--gray1,#F8F9FA)">
-          <td colspan="7" style="padding-left:${12 + indent}px;font-weight:700;font-size:13px;color:var(--gray6,#374151)">
-            ${'▶'.repeat(depth === 0 ? 1 : 0)} ${task.name}
-          </td>
-        </tr>
-        ${children}`
-    }
-
-    // Render task lá có data
-    const pctA = mapA[task.id]?.pct_complete ?? null
-    const pctB = mapB[task.id]?.pct_complete ?? null
-    const note = mapB[task.id]?.note || mapA[task.id]?.note || ''
-
-    // Tính delta
-    let delta = null
-    if (pctA !== null && pctB !== null) delta = pctB - pctA
-    else if (pctA === null && pctB !== null) delta = pctB
-    // pctA có, pctB null → delta = null (không báo)
-
-    // Tính sản lượng & thành tiền
-    let slText = '—', ttText = '—'
-    let ttVal = null
-    const unitPrice = task.unit_price || 0
-    const khQty    = task.kh_quantity || 0
-    if (delta !== null && delta !== 0 && unitPrice && khQty) {
-      const slDelta = (delta / 100) * khQty
-      ttVal = slDelta * unitPrice
-      const slSign = delta > 0 ? '+' : ''
-      const ttColor = delta > 0 ? 'var(--green)' : 'var(--red)'
-      slText = `<span style="color:${ttColor}">${slSign}${slDelta.toFixed(2)} ${task.unit || ''}</span>`
-      ttText = `<span style="color:${ttColor}">${slSign}${fmtVND(ttVal)}</span>`
-      if (ttVal > 0) totalTang += ttVal
-      else totalGiam += ttVal
-    }
-
-    // Delta display
-    let deltaHtml = '—'
-    let deltaColor = 'var(--gray4)'
-    if (delta === null) {
-      deltaHtml = '<span style="color:var(--gray4);font-size:11px">Không báo</span>'
-    } else if (delta > 0) {
-      deltaColor = 'var(--green)'; deltaHtml = `+${delta}%`
-    } else if (delta < 0) {
-      deltaColor = 'var(--red)'; deltaHtml = `${delta}%`
-    } else {
-      deltaColor = 'var(--amber)'; deltaHtml = '⚠️ Không đổi'
-    }
-
-    const rowBg = delta === 0 ? 'background:#FEF3C7' :
-                  delta === null && pctA !== null ? 'background:#F9FAFB' : ''
-    const indent = depth * 20
-
-    rowCount++
-    return `<tr style="${rowBg}">
-      <td style="padding-left:${12 + indent}px;font-size:13px">${task.name}</td>
-      <td style="text-align:center">${pctA !== null ? pctA + '%' : '—'}</td>
-      <td style="text-align:center">${pctB !== null ? pctB + '%' : '—'}</td>
-      <td style="text-align:center;font-weight:700;color:${deltaColor}">${deltaHtml}</td>
-      <td style="text-align:right">${slText}</td>
-      <td style="text-align:right">${ttText}</td>
-      <td style="font-size:12px;color:var(--gray5)">${note}</td>
-    </tr>`
-  }
-
-  // Lấy root tasks (không có parent hoặc parent không tồn tại trong tasks)
-  const taskIds = new Set(STATE.tasks.map(t => t.id))
-  const roots = STATE.tasks.filter(t => !t.parent_id || !taskIds.has(t.parent_id))
-
-  // Sort theo outline_order nếu có
-  const sortTasks = arr => [...arr].sort((a, b) =>
-    (a.outline_order ?? a.outline_number ?? 0) > (b.outline_order ?? b.outline_number ?? 0) ? 1 : -1
-  )
-
-  const bodyRows = sortTasks(roots).map(t => renderNode(t, 0)).join('')
-
-  if (!rowCount) {
-    el.innerHTML = '<div style="color:var(--gray4);padding:20px">Không có công tác nào được cập nhật trong 2 tuần này</div>'
+  if (!changedLeafIds.size) {
+    el.innerHTML = '<div style="color:var(--gray4);padding:20px">Không có công tác nào thay đổi giữa 2 tuần này</div>'
     return
   }
 
+  // Tìm tất cả ancestor của changed leaf tasks (dùng wbs_code)
+  const taskMap = {}
+  STATE.tasks.forEach(t => { taskMap[t.id] = t })
+
+  function getAncestors(task) {
+    const ancestors = new Set()
+    const parts = task.wbs_code?.split('.') || []
+    for (let i = 1; i < parts.length; i++) {
+      const parentWbs = parts.slice(0, i).join('.')
+      const parent = STATE.tasks.find(t => t.wbs_code === parentWbs)
+      if (parent) ancestors.add(parent.id)
+    }
+    return ancestors
+  }
+
+  const visibleIds = new Set(changedLeafIds)
+  changedLeafIds.forEach(tid => {
+    const task = taskMap[tid]
+    if (task) getAncestors(task).forEach(aid => visibleIds.add(aid))
+  })
+
+  // Render cây WBS — chỉ hiện node trong visibleIds
+  let totalTang = 0, totalGiam = 0, rowCount = 0
+
+  const rows = STATE.tasks
+    .filter(t => visibleIds.has(t.id))
+    .map(t => {
+      const indent = (t.outline_level - 1) * 20
+      const isSummary = t.is_summary
+
+      if (isSummary) {
+        // Task cha — chỉ làm header nhóm, không tính số
+        const bgColor = t.outline_level === 1 ? '#1A2B4A'
+                      : t.outline_level === 2 ? '#2563EB'
+                      : '#EEF2FF'
+        const txtColor = t.outline_level <= 2 ? 'white' : 'var(--navy)'
+        return `
+          <tr style="background:${bgColor}">
+            <td colspan="7" style="padding:7px 12px;padding-left:${12+indent}px;
+              font-size:12px;font-weight:700;color:${txtColor}">
+              ${t.name}
+            </td>
+          </tr>`
+      }
+
+      // Task lá
+      const pctA = mapA[t.id]?.pct_complete ?? null
+      const pctB = mapB[t.id]?.pct_complete ?? null
+      const note = mapB[t.id]?.note || mapA[t.id]?.note || ''
+      const delta = (pctB ?? 0) - (pctA ?? 0)
+
+      // Sản lượng & thành tiền
+      const unitPrice = t.unit_price || 0
+      const khQty     = t.planned_quantity || 0
+      let slText = '—', ttText = '—'
+      let ttVal = null
+
+      if (delta !== 0 && unitPrice > 0 && khQty > 0) {
+        const slDelta = (delta / 100) * khQty
+        ttVal = slDelta * unitPrice
+        const sign = delta > 0 ? '+' : ''
+        const color = delta > 0 ? 'var(--green)' : 'var(--red)'
+        slText = `<span style="color:${color}">${sign}${slDelta.toFixed(2)} ${t.unit||''}</span>`
+        ttText = `<span style="color:${color};font-weight:600">${sign}${fmtVND(ttVal)}</span>`
+        if (ttVal > 0) totalTang += ttVal
+        else totalGiam += ttVal
+      }
+
+      // Delta badge
+      let deltaBadge = '—'
+      if (delta > 0)       deltaBadge = `<span style="color:var(--green);font-weight:700">+${delta}%</span>`
+      else if (delta < 0)  deltaBadge = `<span style="color:var(--red);font-weight:700">${delta}%</span>`
+      else if (pctA === null && pctB !== null) deltaBadge = `<span style="color:var(--blue);font-weight:700">+${pctB}% (mới)</span>`
+
+      rowCount++
+      return `
+        <tr style="border-bottom:0.5px solid var(--gray2)">
+          <td style="padding:6px 8px;padding-left:${12+indent}px;font-size:12px;color:var(--gray7)">${t.name}</td>
+          <td style="text-align:center;font-size:12px">${pctA !== null ? pctA+'%' : '—'}</td>
+          <td style="text-align:center;font-size:12px">${pctB !== null ? pctB+'%' : '—'}</td>
+          <td style="text-align:center;font-size:12px">${deltaBadge}</td>
+          <td style="text-align:center;font-size:11px">${t.planned_quantity ? khQty+' '+(t.unit||'') : '—'}</td>
+          <td style="text-align:right;font-size:12px">${slText}</td>
+          <td style="text-align:right;font-size:12px">${ttText}</td>
+          <td style="font-size:11px;color:var(--gray5)">${note}</td>
+        </tr>`
+    }).join('')
+
   // Summary bar
-  const summaryParts = []
-  if (totalTang > 0) summaryParts.push(
-    `<span style="background:#D1FAE5;color:#065F46;padding:5px 12px;border-radius:6px;font-weight:700">
-      📈 Tăng: +${fmtVND(totalTang)}
-    </span>`
-  )
-  if (totalGiam < 0) summaryParts.push(
-    `<span style="background:#FEE2E2;color:#991B1B;padding:5px 12px;border-radius:6px;font-weight:700">
-      📉 Giảm: ${fmtVND(totalGiam)}
-    </span>`
-  )
   const netVal = totalTang + totalGiam
-  if (totalTang > 0 && totalGiam < 0) summaryParts.push(
-    `<span style="background:#EFF6FF;color:#1D4ED8;padding:5px 12px;border-radius:6px;font-weight:700">
-      ⚖️ Net: ${netVal >= 0 ? '+' : ''}${fmtVND(netVal)}
-    </span>`
-  )
+  const summaryHtml = (totalTang > 0 || totalGiam < 0) ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${totalTang > 0 ? `<span style="background:#D1FAE5;color:#065F46;padding:5px 14px;border-radius:6px;font-size:13px;font-weight:700">📈 Tăng: +${fmtVND(totalTang)}</span>` : ''}
+      ${totalGiam < 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:5px 14px;border-radius:6px;font-size:13px;font-weight:700">📉 Giảm: ${fmtVND(totalGiam)}</span>` : ''}
+      ${totalTang > 0 && totalGiam < 0 ? `<span style="background:#EFF6FF;color:#1D4ED8;padding:5px 14px;border-radius:6px;font-size:13px;font-weight:700">⚖️ Net: ${netVal>=0?'+':''}${fmtVND(netVal)}</span>` : ''}
+    </div>` : ''
 
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-      <div style="font-size:13px;color:var(--gray5)">
-        So sánh <strong>Tuần ${weekA}</strong> vs <strong>Tuần ${weekB}</strong>
-        &nbsp;·&nbsp;<span style="color:var(--amber)">⚠️ Vàng = không tiến triển</span>
-        &nbsp;·&nbsp;<span style="color:var(--gray4)">Xám = tuần B chưa báo</span>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${summaryParts.join('')}</div>
+    <div style="font-size:13px;color:var(--gray5);margin-bottom:10px">
+      So sánh <strong>Tuần ${weekA}</strong> → <strong>Tuần ${weekB}</strong>
+      &nbsp;·&nbsp; <strong style="color:var(--blue)">${changedLeafIds.size}</strong> công tác thay đổi
     </div>
-    <div style="overflow-x:auto">
-    <table class="tbl">
-      <thead><tr>
-        <th style="min-width:240px">Hạng mục / Công tác</th>
-        <th style="text-align:center;width:80px">Tuần ${weekA}</th>
-        <th style="text-align:center;width:80px">Tuần ${weekB}</th>
-        <th style="text-align:center;width:110px">Thay đổi</th>
-        <th style="text-align:right;width:110px">SL thay đổi</th>
-        <th style="text-align:right;width:120px">Thành tiền</th>
-        <th style="min-width:120px">Ghi chú</th>
-      </tr></thead>
-      <tbody>${bodyRows}</tbody>
-      ${(totalTang > 0 || totalGiam < 0) ? `
-      <tfoot>
-        <tr style="background:var(--gray1,#F3F4F6)">
-          <td colspan="5" style="text-align:right;font-weight:700;padding-right:8px;font-size:13px">
-            Tổng sản lượng tăng tuần ${weekB}:
-          </td>
-          <td style="text-align:right;font-weight:700;color:var(--green);font-size:13px">
-            ${totalTang > 0 ? '+' + fmtVND(totalTang) : '—'}
-          </td>
-          <td></td>
-        </tr>
-        ${totalGiam < 0 ? `
-        <tr style="background:var(--gray1,#F3F4F6)">
-          <td colspan="5" style="text-align:right;font-weight:700;padding-right:8px;font-size:13px">
-            Tổng sản lượng giảm tuần ${weekB}:
-          </td>
-          <td style="text-align:right;font-weight:700;color:var(--red);font-size:13px">
-            ${fmtVND(totalGiam)}
-          </td>
-          <td></td>
-        </tr>` : ''}
-      </tfoot>` : ''}
-    </table>
+    ${summaryHtml}
+    <div style="border:1px solid var(--gray2);border-radius:var(--radius);overflow:hidden">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:var(--navy);color:white;font-size:11px">
+            <th style="padding:8px 12px;text-align:left;min-width:220px">Hạng mục / Công tác</th>
+            <th style="padding:8px;text-align:center;width:70px">T.${weekA}</th>
+            <th style="padding:8px;text-align:center;width:70px">T.${weekB}</th>
+            <th style="padding:8px;text-align:center;width:90px">Thay đổi</th>
+            <th style="padding:8px;text-align:center;width:80px">KL KH</th>
+            <th style="padding:8px;text-align:right;width:100px">SL thay đổi</th>
+            <th style="padding:8px;text-align:right;width:110px">Thành tiền</th>
+            <th style="padding:8px;text-align:left;min-width:100px">Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        ${(totalTang > 0 || totalGiam < 0) ? `
+        <tfoot style="background:var(--gray1)">
+          <tr>
+            <td colspan="6" style="padding:8px 12px;text-align:right;font-weight:700;font-size:13px">
+              Tổng sản lượng tăng tuần ${weekB}:
+            </td>
+            <td style="padding:8px;text-align:right;font-weight:700;color:var(--green);font-size:13px">
+              ${totalTang > 0 ? '+'+fmtVND(totalTang) : '—'}
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>` : ''}
+      </table>
     </div>`
 }
