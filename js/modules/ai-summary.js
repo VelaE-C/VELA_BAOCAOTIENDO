@@ -56,7 +56,7 @@ async function generateAISummary() {
     }
 
     // ── LỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ từ schedule_revisions ──
-    // Tổng trượt = kh_finish root task - finish_date gốc của project (không cộng delta_days từng revision)
+    // Chỉ báo cáo điều chỉnh khi có revision records thực tế — không suy diễn từ finish_date
     let revisionContext = ''
     try {
       const { data: revisions } = await sb.from('schedule_revisions')
@@ -64,34 +64,32 @@ async function generateAISummary() {
         .eq('project_id', proj.id)
         .order('created_at', { ascending: true })
 
-      // Tính tổng trượt thực tế: root task kh_finish vs project finish_date (baseline gốc)
-      let totalSlipDays = 0
-      const baselineFinish = proj.finish_date || proj.baseline_finish || null
-      if (baselineFinish && currentFinish) {
-        const [by, bm, bd] = baselineFinish.split('-').map(Number)
-        const [cy, cm, cd] = currentFinish.split('-').map(Number)
-        totalSlipDays = Math.round(
-          (new Date(cy, cm-1, cd) - new Date(by, bm-1, bd)) / 86400000
-        )
-      }
-
       if (revisions?.length) {
+        // Tính tổng trượt thực tế: root task kh_finish vs project finish_date (baseline HĐ gốc)
+        const baselineFinish = proj.finish_date || null
+        let totalSlipDays = 0
+        if (baselineFinish && currentFinish) {
+          const [by, bm, bd] = baselineFinish.split('-').map(Number)
+          const [cy, cm, cd] = currentFinish.split('-').map(Number)
+          totalSlipDays = Math.round(
+            (new Date(cy, cm-1, cd) - new Date(by, bm-1, bd)) / 86400000
+          )
+        }
+
         const slipStr = totalSlipDays > 0
-          ? `tổng trượt +${totalSlipDays} ngày so với deadline HĐ gốc (${new Date(baselineFinish).toLocaleDateString('vi-VN')})`
+          ? `tổng trượt +${totalSlipDays} ngày so với deadline HĐ gốc`
           : totalSlipDays < 0
           ? `hoàn thành sớm hơn HĐ gốc ${Math.abs(totalSlipDays)} ngày`
           : `đúng deadline HĐ gốc`
 
-        revisionContext = `\nLỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ (${revisions.length} lần điều chỉnh, ${slipStr}):\n`
+        revisionContext = `\nLỊCH SỬ ĐIỀU CHỈNH TIẾN ĐỘ (${revisions.length} lần, ${slipStr}):\n`
         revisions.forEach((r, i) => {
           const d = r.effective_date ? new Date(r.effective_date).toLocaleDateString('vi-VN') : '—'
           revisionContext += `- Lần ${i+1} (${d}): ${r.revision_name} — ${r.reason}\n`
         })
-        revisionContext += `→ Deadline hiện hành (${actualEndDate}) đã được CĐT chấp thuận. Khi đánh giá tiến độ hàng tuần, so sánh với DEADLINE HIỆN HÀNH, không phải HĐ gốc.\n`
-      } else if (totalSlipDays !== 0 && baselineFinish && currentFinish) {
-        // Có trượt nhưng chưa có revision record
-        revisionContext = `\nTimeline đã điều chỉnh: trượt +${totalSlipDays} ngày so với HĐ gốc (${new Date(baselineFinish).toLocaleDateString('vi-VN')} → ${actualEndDate}).\n`
+        revisionContext += `→ Deadline hiện hành (${actualEndDate}) đã được CĐT chấp thuận. So sánh tiến độ với DEADLINE HIỆN HÀNH, không phải HĐ gốc.\n`
       }
+      // Nếu chưa có revision → không thêm gì vào prompt, AI chỉ dùng timeline hiện hành
     } catch(e) { /* bỏ qua nếu bảng chưa có data */ }
 
     // ── LỊCH SỬ AI CÁC TUẦN TRƯỚC ──
@@ -202,8 +200,7 @@ ${(() => {
       const maxCN = last7.length ? Math.max(...last7.map(h=>h.cn_proj||0)) : 0
       return `QUÂN SỐ 7 NGÀY GẦN NHẤT:
 - TB 7 ngày (tuần báo cáo): ${avg7} CN/ngày ${trendStr} | Min: ${minCN} | Max: ${maxCN}
-- Ngày gần nhất: ${lastDay.cn_proj||0} CN · BCH: ${lastDay.total_bch||0}
-- Phân loại: KC ${lastDay.total_ketcau||0} · HT ${lastDay.total_hoanthien||0} · MEP ${lastDay.total_mep||0} · CN ${lastDay.total_congnhat||0}
+- Ngày gần nhất: ${lastDay.cn_proj||0} CN (dự án) · BCH: ${lastDay.total_bch||0}
 `
     })()}${STATE._aiUserNote ? 'CONTEXT THUC TE TU KTTC (uu tien cao):\n' + STATE._aiUserNote + '\n\nHay tich hop thong tin nay. Neu cong tac tre do nguyen nhan khach quan da neu, ghi nhan ro va danh gia kha nang thu hoi tien do.\n\n' : ''}
 LƯU Ý QUAN TRỌNG:
