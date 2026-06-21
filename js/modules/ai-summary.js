@@ -123,35 +123,51 @@ async function generateAISummary() {
       t.kh_start && new Date(t.kh_start) >= now60
     )
 
-    // Nhóm 1: Task đang thi công
+    // Nhóm 1: Top 5 task đang thi công có delay cao nhất (ưu tiên task trễ)
     const inProgress = leaf.filter(t => t.tt_start && (t.pct_complete||0) < 100)
-    const inProgressSummary = inProgress.slice(0,10).map(t => {
+    const inProgressTop = [...inProgress]
+      .sort((a,b) => (b._delay||0) - (a._delay||0))
+      .slice(0,5)
+    const inProgressSummary = inProgressTop.map(t => {
       const pct = t.pct_complete||0
       const d = t._delay || 0
       const delayStr = d > 0 ? ', trễ ' + d + ' ngày' : d < 0 ? ', sớm ' + Math.abs(d) + ' ngày' : ''
-      const noteStr = t.latest_note ? ' [Ghi chú: ' + t.latest_note + ']' : ''
+      const noteStr = t.latest_note ? ' [' + t.latest_note + ']' : ''
       return '- ' + t.name + ': ' + pct + '%' + delayStr + noteStr
     }).join('\n')
 
-    // Nhóm 2: Task trễ hợp lệ kèm ghi chú
-    const lateWithNote = validLate.slice(0,8).map(t => {
-      const noteStr = t.latest_note ? ' | Ghi chú: ' + t.latest_note : ''
+    // Nhóm 2: Top 5 task trễ nghiêm trọng nhất (delay > 5 ngày)
+    const lateWithNote = validLate.filter(t => t._delay > 5).slice(0,5).map(t => {
+      const noteStr = t.latest_note ? ' [' + t.latest_note + ']' : ''
       return '- ' + t.name + ': trễ ' + t._delay + ' ngày, đạt ' + (t.pct_complete||0) + '%' + noteStr
     }).join('\n')
 
-    // Nhóm 3: Level 3 summary
-    const lvl3Clean = tasks.filter(t => t.is_summary && t.outline_level === 3)
-    const lvl3SummaryClean = lvl3Clean.map(t => {
+    // Nhóm 3: Level 2 summary — chỉ lấy hạng mục CÓ VẤN ĐỀ (delay > 3 ngày hoặc pct < 50% so với KH)
+    const lvl2Tasks = tasks.filter(t => t.is_summary && t.outline_level === 2)
+    const lvl2Summary = lvl2Tasks.map(t => {
       const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
-      const delay = t._delay
+      const delay = t._delay || 0
       let status = 'Đúng KH'
-      if (delay > 0 && delay < 365) status = 'Trễ ' + delay + ' ngày'
+      if (delay > 3 && delay < 365) status = 'Trễ ' + delay + ' ngày'
       else if (delay < 0) status = 'Sớm ' + Math.abs(delay) + ' ngày'
-      const parent = tasks.find(p => p.is_summary && p.outline_level === 2
-        && t.wbs_code && p.wbs_code && t.wbs_code.startsWith(p.wbs_code + '.'))
-      const parentPrefix = parent ? '[' + parent.name.slice(0,20) + '] ' : ''
-      return '- ' + parentPrefix + t.name + ': ' + pct + '% (' + status + ')'
+      return '- ' + t.name + ': ' + pct + '% (' + status + ')'
     }).join('\n')
+
+    // Velocity: % HT tuần này vs tuần trước (từ lịch sử AI)
+    let velocityStr = ''
+    try {
+      const { data: lastWeekStats } = await sb.from('ai_summaries')
+        .select('stats').eq('project_id', proj.id)
+        .order('created_at', { ascending: false }).limit(2)
+      if (lastWeekStats?.length >= 2) {
+        const prevPct = JSON.parse(lastWeekStats[1].stats||'{}').total_pct || 0
+        const velocity = totalPct - prevPct
+        velocityStr = velocity > 0
+          ? `Tốc độ tuần này: +${velocity}% (tăng so với tuần trước)`
+          : velocity < 0 ? `Tốc độ tuần này: ${velocity}% (giảm so với tuần trước)`
+          : 'Tốc độ: không thay đổi so với tuần trước'
+      }
+    } catch(e) {}
 
     const prompt = `Bạn là trợ lý phân tích dự án xây dựng. Nhiệm vụ: viết báo cáo tuần cho BAN GIÁM ĐỐC — ngắn gọn, số liệu macro, tập trung vào quyết định và rủi ro. KHÔNG liệt kê chi tiết từng task. KHÔNG dùng ngôn ngữ kỹ thuật chuyên sâu.
 
@@ -166,14 +182,16 @@ TỔNG QUAN:
 - Chưa bắt đầu (quá hạn trong 60 ngày gần đây): ${validNotStarted.length} công tác
 - % hoàn thành tổng thể: ${totalPct}%
 ${historyContext}
-CHIẾN TRƯỜNG TUẦN NÀY — ĐANG THI CÔNG (${inProgress.length} công tác):
+VELOCITY: ${velocityStr || 'Chưa có dữ liệu tuần trước'}
+
+ĐANG THI CÔNG — TOP 5 QUAN TRỌNG NHẤT (tổng ${inProgress.length} công tác):
 ${inProgressSummary || 'Chưa có công tác nào đang thi công'}
 
-CÔNG TÁC CHẬM CÓ DELAY HỢP LỆ (${validLate.length} công tác):
-${lateWithNote || 'Không có'}
+CÔNG TÁC CHẬM NGHIÊM TRỌNG (delay > 5 ngày, tổng ${validLate.length} công tác):
+${lateWithNote || 'Không có công tác nào trễ nghiêm trọng'}
 
-TIẾN ĐỘ CHI TIẾT THEO HẠNG MỤC (level 3):
-${lvl3SummaryClean || 'Không có dữ liệu'}
+TIẾN ĐỘ THEO HẠNG MỤC LỚN (level 2):
+${lvl2Summary || 'Không có dữ liệu'}
 
 ${(() => {
       if (!STATE._attendanceData) return ''
