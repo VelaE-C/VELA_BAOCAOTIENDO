@@ -126,8 +126,8 @@ async function loadCompare() {
         const txtColor = t.outline_level <= 2 ? 'white' : 'var(--navy)'
         return `
           <tr style="background:${bgColor}">
-            <td colspan="7" style="padding:7px 12px;padding-left:${12+indent}px;
-              font-size:12px;font-weight:700;color:${txtColor}">
+            <td colspan="8" style="padding:8px 12px;padding-left:${12+indent}px;
+              font-size:13px;font-weight:700;color:${txtColor}">
               ${t.name}
             </td>
           </tr>`
@@ -165,14 +165,16 @@ async function loadCompare() {
       rowCount++
       return `
         <tr style="border-bottom:0.5px solid var(--gray2)">
-          <td style="padding:6px 8px;padding-left:${12+indent}px;font-size:12px;color:var(--gray7)">${t.name}</td>
-          <td style="text-align:center;font-size:12px">${pctA !== null ? pctA+'%' : '—'}</td>
-          <td style="text-align:center;font-size:12px">${pctB !== null ? pctB+'%' : '—'}</td>
-          <td style="text-align:center;font-size:12px">${deltaBadge}</td>
-          <td style="text-align:center;font-size:11px">${t.planned_quantity ? khQty+' '+(t.unit||'') : '—'}</td>
-          <td style="text-align:right;font-size:12px">${slText}</td>
-          <td style="text-align:right;font-size:12px">${ttText}</td>
-          <td style="font-size:11px;color:var(--gray5)">${note}</td>
+          <td style="padding:7px 8px;padding-left:${12+indent}px;font-size:13px;color:var(--gray7);
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.name}">${t.name}</td>
+          <td style="text-align:center;font-size:13px">${pctA !== null ? pctA+'%' : '—'}</td>
+          <td style="text-align:center;font-size:13px">${pctB !== null ? pctB+'%' : '—'}</td>
+          <td style="text-align:center;font-size:13px">${deltaBadge}</td>
+          <td style="text-align:center;font-size:13px">${t.planned_quantity ? khQty+' '+(t.unit||'') : '—'}</td>
+          <td style="text-align:right;font-size:13px">${slText}</td>
+          <td style="text-align:right;font-size:13px;font-weight:600">${ttText}</td>
+          <td style="font-size:12px;color:var(--gray5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            title="${note}">${note}</td>
         </tr>`
     }).join('')
 
@@ -191,28 +193,38 @@ async function loadCompare() {
       &nbsp;·&nbsp; <strong style="color:var(--blue)">${changedLeafIds.size}</strong> công tác thay đổi
     </div>
     ${summaryHtml}
-    <div style="border:1px solid var(--gray2);border-radius:var(--radius);overflow:hidden">
-      <table style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr style="background:var(--navy);color:white;font-size:11px">
-            <th style="padding:8px 12px;text-align:left;min-width:220px">Hạng mục / Công tác</th>
-            <th style="padding:8px;text-align:center;width:70px">T.${weekA}</th>
-            <th style="padding:8px;text-align:center;width:70px">T.${weekB}</th>
-            <th style="padding:8px;text-align:center;width:90px">Thay đổi</th>
-            <th style="padding:8px;text-align:center;width:80px">KL KH</th>
-            <th style="padding:8px;text-align:right;width:100px">SL thay đổi</th>
-            <th style="padding:8px;text-align:right;width:110px">Thành tiền</th>
-            <th style="padding:8px;text-align:left;min-width:100px">Ghi chú</th>
+    <div style="border:1px solid var(--gray2);border-radius:var(--radius);overflow:hidden;max-height:calc(100vh - 280px);overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+        <colgroup>
+          <col style="width:35%">
+          <col style="width:7%">
+          <col style="width:7%">
+          <col style="width:9%">
+          <col style="width:8%">
+          <col style="width:11%">
+          <col style="width:12%">
+          <col style="width:11%">
+        </colgroup>
+        <thead style="position:sticky;top:0;z-index:10">
+          <tr style="background:var(--navy);color:white;font-size:13px">
+            <th style="padding:10px 12px;text-align:left">Hạng mục / Công tác</th>
+            <th style="padding:10px 8px;text-align:center">T.${weekA}</th>
+            <th style="padding:10px 8px;text-align:center">T.${weekB}</th>
+            <th style="padding:10px 8px;text-align:center">Thay đổi</th>
+            <th style="padding:10px 8px;text-align:center">KL KH</th>
+            <th style="padding:10px 8px;text-align:right">SL thay đổi</th>
+            <th style="padding:10px 8px;text-align:right">Thành tiền</th>
+            <th style="padding:10px 8px;text-align:left">Ghi chú</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
         ${(totalTang > 0 || totalGiam < 0) ? `
         <tfoot style="background:var(--gray1)">
           <tr>
-            <td colspan="6" style="padding:8px 12px;text-align:right;font-weight:700;font-size:13px">
+            <td colspan="6" style="padding:10px 12px;text-align:right;font-weight:700;font-size:14px">
               Tổng sản lượng tăng tuần ${weekB}:
             </td>
-            <td style="padding:8px;text-align:right;font-weight:700;color:var(--green);font-size:13px">
+            <td style="padding:10px 8px;text-align:right;font-weight:700;color:var(--green);font-size:14px">
               ${totalTang > 0 ? '+'+fmtVND(totalTang) : '—'}
             </td>
             <td></td>
