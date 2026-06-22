@@ -27,12 +27,10 @@ function wbs() {
       <div class="wbs-kh-end">KH Kết thúc</div>
       <div class="wbs-dur">Ngày KH</div>
       <div class="wbs-pct">Tiến độ</div>
-      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
-      <div style="width:90px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
       <div class="wbs-status" style="width:90px">Đơn vị/KH</div>
       <div class="wbs-status">Trạng thái</div>
-      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
-      <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
+      <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
+      <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
     </div>
     <div class="wbs-tree" id="wbs-container" style="height:calc(100vh - 230px);overflow-y:auto"></div>
   </div>`
@@ -45,6 +43,21 @@ function initWbs() {
       '<div style="padding:40px;text-align:center;color:var(--gray4)">Chưa có dữ liệu. Vào Import để tải file MS Project.</div>'
     return
   }
+
+  // Rollup contract value TRƯỚC khi render — để pct tài chính tính đúng
+  const sortedForRollup = [...STATE.tasks].sort((a,b) => b.outline_level - a.outline_level)
+  sortedForRollup.forEach(t => {
+    if (!t.is_summary) {
+      t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
+      return
+    }
+    const children = STATE.tasks.filter(c =>
+      c.wbs_code && t.wbs_code &&
+      c.wbs_code.startsWith(t.wbs_code + '.') &&
+      c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
+    )
+    t._contractValue = children.reduce((s, c) => s + (c._contractValue||0), 0)
+  })
 
   // Build tree structure
   const rows = tasks.map(t => {
@@ -103,12 +116,20 @@ function initWbs() {
       <div class="wbs-kh-end">${fmtDateShort(t.kh_finish)}</div>
       <div class="wbs-dur">${t.kh_duration_days ?? '—'}</div>
       <div class="wbs-pct">
-        <div class="pct-bar">
-          <div class="pct-fill ${barColor}" style="width:${pct}%"></div>
-        </div>
-        <div style="font-size:11px;color:${pct>0?'var(--gray7)':'var(--gray4)'};margin-top:2px;font-weight:${pct>0?500:400}">
-          ${pct}%${t.is_summary && pct > 0 ? ' ⟳' : ''}
-        </div>
+        ${(() => {
+          // Tính % theo tiền nếu có unit_price, fallback về pct thông thường
+          const cv = t.is_summary ? (t._contractValue||0) : (t.unit_price||0)*(t.planned_quantity||1)
+          const earned = cv * pct / 100
+          // % tài chính = sản lượng TH / giá trị HĐ (chỉ khi cv > 0)
+          const pctMoney = cv > 0 ? Math.round(earned / cv * 100) : pct
+          const displayPct = pctMoney  // dùng % tài chính nếu có, không thì % thường
+          const barColorFinal = displayPct === 100 ? 'on' : (t._delay||0) > 0 ? 'late' : 'on'
+          const moneyTag = cv > 0 && !t.is_summary
+            ? '<span style="font-size:9px;color:var(--teal);margin-left:2px">₫</span>' : ''
+          return '<div class="pct-bar"><div class="pct-fill ' + barColorFinal + '" style="width:' + displayPct + '%"></div></div>'
+            + '<div style="font-size:11px;color:' + (displayPct>0?'var(--gray7)':'var(--gray4)') + ';margin-top:2px;font-weight:' + (displayPct>0?500:400) + ';display:flex;align-items:center;justify-content:center;gap:2px">'
+            + displayPct + '%' + (t.is_summary && displayPct > 0 ? ' ⟳' : '') + moneyTag + '</div>'
+        })()}
       </div>
       <div class="wbs-status" style="width:90px;font-size:11px;color:var(--gray5);text-align:center">
         ${t.unit && t.unit !== '%' && t.planned_quantity
@@ -135,43 +156,24 @@ function initWbs() {
         })()}
       </div>
       ${(() => {
-        const qty = t.planned_quantity || (t.is_summary ? 0 : 1)
-        const contractVal = (t.unit_price||0) * qty
-        // Summary: rollup từ con
-        let cv = contractVal
-        if (t.is_summary && t._contractValue !== undefined) cv = t._contractValue
+        // Dùng _contractValue đã rollup (tính trước khi render)
+        const cv = t.is_summary
+          ? (t._contractValue || 0)
+          : (t.unit_price||0) * (t.planned_quantity||1)
         const earnedVal = cv * (t.display_pct||0) / 100
-        const fmtM = v => {
-          if (!v || v === 0) return '—'
-          return v.toLocaleString('vi-VN') + ' ₫'
-        }
+        const fmtM = v => (!v || v === 0) ? '—' : v.toLocaleString('vi-VN') + ' ₫'
         return `
-          <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+          <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
             color:${cv>0?'var(--navy)':'var(--gray3)'};font-weight:${cv>0?'500':'400'}">
             ${fmtM(cv)}
           </div>
-          <div style="width:88px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+          <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
             font-weight:500;color:${earnedVal>0?'var(--teal)':'var(--gray3)'}">
             ${cv>0 ? fmtM(earnedVal) : '—'}
           </div>`
       })()}
     </div>`
   }).join('')
-
-  // Rollup contract value — dùng copy để không làm hỏng STATE.tasks gốc
-  const sortedForRollup = [...STATE.tasks].sort((a,b) => b.outline_level - a.outline_level)
-  sortedForRollup.forEach(t => {
-    if (!t.is_summary) {
-      t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
-      return
-    }
-    const children = STATE.tasks.filter(c =>
-      c.wbs_code && t.wbs_code &&
-      c.wbs_code.startsWith(t.wbs_code + '.') &&
-      c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
-    )
-    t._contractValue = children.reduce((s, c) => s + (c._contractValue||0), 0)
-  })
 
   document.getElementById('wbs-container').innerHTML = rows
   // Default: show all
@@ -1131,16 +1133,14 @@ function openBulkUnitPrice() {
         </td>
         <td style="padding:4px 6px;text-align:center">
           <div style="display:flex;align-items:center;gap:4px;justify-content:center">
-            <input type="text" class="up-input form-input"
+            <input type="number" class="up-input form-input"
               data-task-id="${t.id}"
               data-qty="${qty||1}"
-              data-raw="${t.unit_price||0}"
               style="padding:6px 12px;font-size:15px;width:200px;text-align:right;font-weight:500"
-              value="${t.unit_price > 0 ? Number(t.unit_price).toLocaleString('vi-VN') : ''}"
+              value="${t.unit_price||''}"
               placeholder="0"
-              oninput="updateUPRow(this)"
-              onfocus="this.value=this.dataset.raw>0?this.dataset.raw:''"
-              onblur="formatUPInput(this)">
+              min="0" step="1000"
+              oninput="updateUPRow(this)">
             <span style="font-size:11px;color:var(--gray5)">₫</span>
           </div>
         </td>
@@ -1205,32 +1205,24 @@ function openBulkUnitPrice() {
   m.style.maxHeight = '95vh'
 }
 
-function formatUPInput(inp) {
-  // Khi blur: format số có dấu chấm, lưu raw vào data-raw
-  const raw = parseFloat(inp.value.replace(/\./g, '').replace(/,/g, '')) || 0
-  inp.dataset.raw = raw
-  inp.value = raw > 0 ? raw.toLocaleString('vi-VN') : ''
-}
-
 function updateUPRow(inp) {
   const taskId  = inp.dataset.taskId
   const task    = STATE.tasks.find(t => t.id === inp.dataset.taskId)
   const qty     = parseFloat(inp.dataset.qty) || task?.planned_quantity || 1
-  // Parse số từ text (bỏ dấu chấm phân cách)
-  const price   = parseFloat(inp.value.replace(/\./g, '').replace(/,/g, '')) || 0
+  const price   = parseFloat(inp.value) || 0
   const val     = price * qty
 
   // Update contract cell
   const cell = document.querySelector(`.up-contract[data-task-id="${taskId}"]`)
   if (cell) {
-    cell.textContent = val > 0 ? val.toLocaleString('vi-VN') + ' ₫' : '—'
+    cell.textContent = val > 0 ? val.toFixed(0) + ' M' : '—'
     cell.style.color = val > 0 ? 'var(--navy)' : 'var(--gray3)'
   }
 
   // Update tổng
   let total = 0
   document.querySelectorAll('.up-input').forEach(i => {
-    const p = parseFloat(i.value.replace(/\./g, '').replace(/,/g, '')) || 0
+    const p = parseFloat(i.value) || 0
     const q = parseFloat(i.dataset.qty) || 1
     total += p * q
   })
@@ -1245,7 +1237,7 @@ function updateUPRow(inp) {
   document.querySelectorAll('.up-input').forEach(i => {
     const task = STATE.tasks.find(t => t.id === i.dataset.taskId)
     const oldPrice = task?.unit_price || 0
-    const newPrice = parseFloat(i.value.replace(/\./g, '').replace(/,/g, '')) || 0
+    const newPrice = parseFloat(i.value) || 0
     if (oldPrice !== newPrice) changed++
   })
   const countEl = document.getElementById('up-changed-count')
@@ -1260,7 +1252,7 @@ async function saveBulkUnitPrice() {
     const taskId  = inp.dataset.taskId
     const task    = STATE.tasks.find(t => t.id === taskId)
     const oldPrice = task?.unit_price || 0
-    const newPrice = parseFloat(inp.value.replace(/\./g, '').replace(/,/g, '')) || 0
+    const newPrice = parseFloat(inp.value) || 0
     if (oldPrice !== newPrice) changes.push({ taskId, newPrice })
   })
 
