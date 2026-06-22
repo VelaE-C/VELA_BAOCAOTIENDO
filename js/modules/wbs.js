@@ -11,8 +11,8 @@ function wbs() {
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="expandAll()">Mở rộng tất cả</button>
       <button class="btn btn-secondary btn-sm" onclick="collapseAll()">Thu gọn tất cả</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportWbsExcel()" style="background:#E8F5E9;color:#1B5E20;border-color:#A5D6A7">📊 Xuất Excel</button>
       ${STATE.role !== 'updater' ? `
-        <button class="btn btn-secondary btn-sm" onclick="recomputeParentDates('${STATE.currentProject?.id}')">🔄 Sync ngày KH cha</button>
         <button class="btn btn-secondary btn-sm" onclick="openBulkReschedule()" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A">📅 Điều chỉnh tiến độ</button>
         <button class="btn btn-secondary btn-sm" onclick="openBulkUnitPrice()" style="background:#DCFCE7;color:#166534;border-color:#BBF7D0">💰 Nhập đơn giá</button>
         <button class="btn btn-primary btn-sm" onclick="openAddTaskModal()">➕ Thêm công tác</button>
@@ -1281,5 +1281,127 @@ async function saveBulkUnitPrice() {
   } finally {
     loading(false)
     if (btn) { btn.disabled = false; btn.innerHTML = '💾 Lưu đơn giá' }
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// XUẤT EXCEL WBS
+// ═══════════════════════════════════════════════════════════
+async function exportWbsExcel() {
+  if (!STATE.tasks.length) { toast('Chưa có dữ liệu', 'error'); return }
+  toast('Đang tạo file Excel...', '')
+
+  try {
+    // Dùng SheetJS (XLSX) qua CDN
+    if (typeof XLSX === 'undefined') {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script')
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+        s.onload = resolve
+        s.onerror = reject
+        document.head.appendChild(s)
+      })
+    }
+
+    const proj = STATE.currentProject
+    const tasks = STATE.tasks
+
+    // Rollup _contractValue
+    const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
+    sorted.forEach(t => {
+      if (!t.is_summary) {
+        t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
+        return
+      }
+      const children = tasks.filter(c =>
+        c.wbs_code && t.wbs_code &&
+        c.wbs_code.startsWith(t.wbs_code + '.') &&
+        c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
+      )
+      t._contractValue = children.reduce((s,c) => s + (c._contractValue||0), 0)
+    })
+
+    // Build rows
+    const headers = [
+      'WBS', 'Hạng mục / Công tác', 'Cấp độ',
+      'KH Bắt đầu', 'KH Kết thúc', 'Ngày KH',
+      'Tiến độ (%)', 'Đơn vị', 'KL Kế hoạch', 'KL Thực hiện',
+      'Đơn giá (VND)', 'Giá trị HĐ (VND)', 'Sản lượng TH (VND)',
+      'Trạng thái'
+    ]
+
+    const dataRows = tasks.map(t => {
+      const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
+      const cv  = t._contractValue || 0
+      const earned = cv * pct / 100
+
+      // Trạng thái text
+      let status = ''
+      if (t.is_summary) {
+        status = pct === 100 ? 'Hoàn thành' : pct > 0 ? 'Đang TH' : 'Chưa BĐ'
+      } else {
+        const d = t._delayDetail
+        if (d?.done) status = 'Xong'
+        else if (d?.delayDays > 0) status = `Trễ ${d.delayDays} ngày`
+        else if (d?.delayDays < 0) status = `Sớm ${Math.abs(d.delayDays)} ngày`
+        else status = 'Đúng KH'
+      }
+
+      return [
+        t.wbs_code || '',
+        '  '.repeat(t.outline_level - 1) + t.name,
+        t.outline_level,
+        t.kh_start || '',
+        t.kh_finish || '',
+        t.kh_duration_days || '',
+        pct,
+        t.unit || '%',
+        t.planned_quantity || '',
+        t.actual_quantity || '',
+        t.unit_price || '',
+        cv || '',
+        cv > 0 ? Math.round(earned) : '',
+        status
+      ]
+    })
+
+    // Tạo workbook
+    const wb = XLSX.utils.book_new()
+    const wsData = [headers, ...dataRows]
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // Định dạng cột
+    ws['!cols'] = [
+      {wch:12}, {wch:50}, {wch:6},
+      {wch:12}, {wch:12}, {wch:8},
+      {wch:10}, {wch:8}, {wch:10}, {wch:10},
+      {wch:16}, {wch:18}, {wch:18},
+      {wch:18}
+    ]
+
+    // Tô màu header (chỉ background navy)
+    const range = XLSX.utils.decode_range(ws['!ref'])
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({r:0, c})]
+      if (cell) {
+        cell.s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '1A2B4A' } },
+          alignment: { horizontal: 'center' }
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, 'WBS Tiến độ')
+
+    // Xuất file
+    const fileName = (proj?.code || 'WBS') + '_TienDo_' + new Date().toISOString().slice(0,10) + '.xlsx'
+    XLSX.writeFile(wb, fileName)
+    toast('Đã xuất Excel: ' + fileName, 'success')
+
+  } catch(e) {
+    toast('Lỗi xuất Excel: ' + e.message, 'error')
+    console.error(e)
   }
 }
