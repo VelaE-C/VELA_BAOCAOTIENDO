@@ -1373,25 +1373,76 @@ async function exportWbsExcel() {
 
     // Định dạng cột
     ws['!cols'] = [
-      {wch:12}, {wch:50}, {wch:6},
+      {wch:12}, {wch:55}, {wch:6},
       {wch:12}, {wch:12}, {wch:8},
       {wch:10}, {wch:8}, {wch:10}, {wch:10},
       {wch:16}, {wch:18}, {wch:18},
       {wch:18}
     ]
 
-    // Tô màu header (chỉ background navy)
+    // Màu theo level — giống WBS panel
+    const levelColors = {
+      0: { bg: '1A2B4A', fg: 'FFFFFF', bold: true },  // header
+      1: { bg: '1A2B4A', fg: 'FFFFFF', bold: true },  // lv1 root
+      2: { bg: '2563EB', fg: 'FFFFFF', bold: true },  // lv2
+      3: { bg: 'EEF2FF', fg: '1E40AF', bold: true },  // lv3
+      4: { bg: 'F1F5F9', fg: '334155', bold: true },  // lv4
+      5: { bg: 'FFFFFF', fg: '374151', bold: false }, // lv5 leaf
+      6: { bg: 'FFFFFF', fg: '374151', bold: false }, // lv6 leaf
+    }
+
     const range = XLSX.utils.decode_range(ws['!ref'])
+
+    // Tô màu header row (row 0)
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({r:0, c})]
-      if (cell) {
-        cell.s = {
-          font: { bold: true, color: { rgb: 'FFFFFF' } },
-          fill: { fgColor: { rgb: '1A2B4A' } },
-          alignment: { horizontal: 'center' }
+      const cellRef = XLSX.utils.encode_cell({r: 0, c})
+      if (!ws[cellRef]) ws[cellRef] = { v: '', t: 's' }
+      ws[cellRef].s = {
+        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+        fill: { patternType: 'solid', fgColor: { rgb: '1A2B4A' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: {
+          bottom: { style: 'thin', color: { rgb: 'FFFFFF' } }
         }
       }
     }
+
+    // Tô màu data rows theo level
+    tasks.forEach((t, i) => {
+      const rowIdx = i + 1  // +1 vì header ở row 0
+      const lv = Math.min(t.outline_level, 6)
+      const clr = levelColors[lv] || levelColors[5]
+
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cellRef = XLSX.utils.encode_cell({r: rowIdx, c})
+        if (!ws[cellRef]) ws[cellRef] = { v: '', t: 's' }
+
+        const isMoneyCol = c >= 10  // Đơn giá, Giá trị HĐ, Sản lượng TH
+        const isPctCol   = c === 6
+
+        ws[cellRef].s = {
+          font: {
+            bold: clr.bold,
+            color: { rgb: clr.fg },
+            sz: 10
+          },
+          fill: {
+            patternType: 'solid',
+            fgColor: { rgb: clr.bg }
+          },
+          alignment: {
+            horizontal: isMoneyCol ? 'right' : isPctCol ? 'center' : 'left',
+            vertical: 'center'
+          },
+          border: {
+            bottom: { style: 'thin', color: { rgb: 'E2E8F0' } }
+          }
+        }
+      }
+    })
+
+    // Freeze header row
+    ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2' }
 
     XLSX.utils.book_append_sheet(wb, ws, 'WBS Tiến độ')
 
