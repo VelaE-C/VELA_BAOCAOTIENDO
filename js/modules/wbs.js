@@ -29,8 +29,8 @@ function wbs() {
       <div class="wbs-pct">Tiến độ</div>
       <div class="wbs-status" style="width:90px">Đơn vị/KH</div>
       <div class="wbs-status">Trạng thái</div>
-      <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
-      <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
+      <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
+      <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
     </div>
     <div class="wbs-tree" id="wbs-container" style="height:calc(100vh - 230px);overflow-y:auto"></div>
   </div>`
@@ -166,13 +166,13 @@ function initWbs() {
         const earnedVal  = t._earnedValue !== undefined
           ? t._earnedValue
           : cv * (t.display_pct||0) / 100
-        const fmtM = v => (!v || v === 0) ? '—' : v.toLocaleString('vi-VN') + ' ₫'
+        const fmtM = v => (!v || v === 0) ? '—' : Math.round(v).toLocaleString('vi-VN') + ' ₫'
         return `
-          <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+          <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
             color:${cv>0?'var(--navy)':'var(--gray3)'};font-weight:${cv>0?'500':'400'}">
             ${fmtM(cv)}
           </div>
-          <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+          <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
             font-weight:500;color:${earnedVal>0?'var(--teal)':'var(--gray3)'}">
             ${cv>0 ? fmtM(earnedVal) : '—'}
           </div>`
@@ -1102,7 +1102,7 @@ function openBulkUnitPrice() {
     const contractVal = t.is_summary
       ? (t._contractValue || 0)
       : (t.unit_price||0) * (qty||1)
-    const fmtM = v => v > 0 ? v.toLocaleString('vi-VN') + ' ₫' : ''
+    const fmtM = v => v > 0 ? Math.round(v).toLocaleString('vi-VN') + ' ₫' : ''
 
     if (t.is_summary) {
       const bgColor = t.outline_level===1 ? '#1A2B4A'
