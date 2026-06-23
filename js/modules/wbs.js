@@ -44,11 +44,13 @@ function initWbs() {
     return
   }
 
-  // Rollup contract value TRƯỚC khi render — để pct tài chính tính đúng
+  // Rollup contract value VÀ earned value TRƯỚC khi render
+  // earnedValue rollup trực tiếp từ con — không dùng display_pct của summary
   const sortedForRollup = [...STATE.tasks].sort((a,b) => b.outline_level - a.outline_level)
   sortedForRollup.forEach(t => {
     if (!t.is_summary) {
       t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
+      t._earnedValue   = t._contractValue * (t.display_pct||0) / 100
       return
     }
     const children = STATE.tasks.filter(c =>
@@ -57,6 +59,8 @@ function initWbs() {
       c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
     )
     t._contractValue = children.reduce((s, c) => s + (c._contractValue||0), 0)
+    // Earned value = rollup trực tiếp từ con (không qua display_pct)
+    t._earnedValue   = children.reduce((s, c) => s + (c._earnedValue||0), 0)
   })
 
   // Build tree structure
@@ -157,10 +161,11 @@ function initWbs() {
       </div>
       ${(() => {
         // Dùng _contractValue đã rollup (tính trước khi render)
-        const cv = t.is_summary
-          ? (t._contractValue || 0)
-          : (t.unit_price||0) * (t.planned_quantity||1)
-        const earnedVal = cv * (t.display_pct||0) / 100
+        const cv         = t.is_summary ? (t._contractValue||0) : (t.unit_price||0)*(t.planned_quantity||1)
+        // Dùng _earnedValue đã rollup từ con (chính xác hơn cv×pct/100)
+        const earnedVal  = t._earnedValue !== undefined
+          ? t._earnedValue
+          : cv * (t.display_pct||0) / 100
         const fmtM = v => (!v || v === 0) ? '—' : v.toLocaleString('vi-VN') + ' ₫'
         return `
           <div style="width:110px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
@@ -1066,10 +1071,11 @@ function openBulkUnitPrice() {
   const allTasks = [...STATE.tasks]
   if (!allTasks.length) { toast('Chưa có công tác nào', 'error'); return }
 
-  // Tính rollup _contractValue TRƯỚC khi build rows
+  // Tính rollup _contractValue VÀ _earnedValue TRƯỚC khi build rows
   allTasks.sort((a,b) => b.outline_level - a.outline_level).forEach(t => {
     if (!t.is_summary) {
       t._contractValue = (t.unit_price||0) * (t.planned_quantity||1)
+      t._earnedValue   = t._contractValue * (t.display_pct||0) / 100
       return
     }
     const children = allTasks.filter(c =>
@@ -1078,6 +1084,7 @@ function openBulkUnitPrice() {
       c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
     )
     t._contractValue = children.reduce((s,c) => s + (c._contractValue||0), 0)
+    t._earnedValue   = children.reduce((s,c) => s + (c._earnedValue||0), 0)
   })
   // Khôi phục sort_order gốc
   allTasks.sort((a,b) => (a.sort_order||0) - (b.sort_order||0))
