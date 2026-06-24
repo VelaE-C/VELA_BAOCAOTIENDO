@@ -63,48 +63,78 @@ function sanluong() {
 let _slExpandedLevels = 99
 function slCollapseLevel(maxLevel) {
   _slExpandedLevels = maxLevel
-  // Hỗ trợ cả mobile (div) và desktop (tr)
-  const selector = '#sl-mob-list [data-level], #sl-tbody tr[data-level]'
-  document.querySelectorAll(selector).forEach(row => {
-    const lv = parseInt(row.dataset.level)
-    row.style.display = lv <= maxLevel ? '' : 'none'
-    const arrow = row.querySelector('.sl-arrow')
-    if (arrow) {
-      const wbs = row.dataset.wbs
-      const hasChildren = document.querySelector(`[data-parent-wbs="${wbs}"]`)
-      if (hasChildren) arrow.textContent = lv < maxLevel ? '▼' : '▶'
-    }
-  })
+  // Mobile: div list
+  const mobList = document.getElementById('sl-mob-list')
+  if (mobList) {
+    mobList.querySelectorAll('[data-level]').forEach(row => {
+      const lv = parseInt(row.dataset.level)
+      row.style.display = lv <= maxLevel ? '' : 'none'
+      const arrow = row.querySelector('.sl-arrow')
+      if (arrow) {
+        const wbs = row.dataset.wbs
+        const hasChildren = mobList.querySelector(`[data-parent-wbs="${wbs}"]`)
+        if (hasChildren) arrow.textContent = lv < maxLevel ? '▼' : '▶'
+      }
+    })
+  }
+  // Desktop: table rows
+  const tbody = document.getElementById('sl-tbody')
+  if (tbody) {
+    tbody.querySelectorAll('tr[data-level]').forEach(row => {
+      const lv = parseInt(row.dataset.level)
+      row.style.display = lv <= maxLevel ? '' : 'none'
+      const arrow = row.querySelector('.sl-arrow')
+      if (arrow) {
+        const wbs = row.dataset.wbs
+        const hasChildren = tbody.querySelector(`tr[data-parent-wbs="${wbs}"]`)
+        if (hasChildren) arrow.textContent = lv < maxLevel ? '▼' : '▶'
+      }
+    })
+  }
 }
 
 function slToggleRow(wbs, level) {
-  const children = document.querySelectorAll(`#sl-tbody tr[data-parent-wbs="${wbs}"]`)
+  const tbody = document.getElementById('sl-tbody')
+  if (!tbody) return
+  const children = tbody.querySelectorAll(`tr[data-parent-wbs="${wbs}"]`)
   if (!children.length) return
   const isHidden = children[0].style.display === 'none'
-  const arrow = document.querySelector(`#sl-tbody tr[data-wbs="${wbs}"] .sl-arrow`)
-  children.forEach(row => {
-    row.style.display = isHidden ? '' : 'none'
-    if (!isHidden) {
-      document.querySelectorAll(`#sl-tbody tr[data-parent-wbs="${row.dataset.wbs}"]`).forEach(r => r.style.display = 'none')
-      const a = row.querySelector('.sl-arrow'); if (a) a.textContent = '▶'
-    }
-  })
+  const arrow = tbody.querySelector(`tr[data-wbs="${wbs}"] .sl-arrow`)
+
+  function setSubtree(parentWbs, show) {
+    tbody.querySelectorAll(`tr[data-parent-wbs="${parentWbs}"]`).forEach(row => {
+      row.style.display = show ? '' : 'none'
+      const a = row.querySelector('.sl-arrow')
+      if (!show && a) a.textContent = '▶'
+      if (!show) setSubtree(row.dataset.wbs, false)
+    })
+  }
+
+  setSubtree(wbs, isHidden)
   if (arrow) arrow.textContent = isHidden ? '▼' : '▶'
 }
 
-// Mobile toggle dùng div
+// Mobile toggle dùng div — ẩn/hiện đệ quy toàn bộ nhánh con
 function slToggleRowMob(wbs) {
-  const children = document.querySelectorAll(`#sl-mob-list [data-parent-wbs="${wbs}"]`)
+  const list = document.getElementById('sl-mob-list')
+  if (!list) return
+  const children = list.querySelectorAll(`[data-parent-wbs="${wbs}"]`)
   if (!children.length) return
   const isHidden = children[0].style.display === 'none'
-  const arrow = document.querySelector(`#sl-mob-list [data-wbs="${wbs}"] .sl-arrow`)
-  children.forEach(row => {
-    row.style.display = isHidden ? '' : 'none'
-    if (!isHidden) {
-      document.querySelectorAll(`#sl-mob-list [data-parent-wbs="${row.dataset.wbs}"]`).forEach(r => r.style.display = 'none')
-      const a = row.querySelector('.sl-arrow'); if (a) a.textContent = '▶'
-    }
-  })
+  const arrow = list.querySelector(`[data-wbs="${wbs}"] .sl-arrow`)
+
+  // Hàm ẩn/hiện đệ quy toàn bộ cháu
+  function setSubtree(parentWbs, show) {
+    list.querySelectorAll(`[data-parent-wbs="${parentWbs}"]`).forEach(row => {
+      row.style.display = show ? '' : 'none'
+      const childArrow = row.querySelector('.sl-arrow')
+      if (!show && childArrow) childArrow.textContent = '▶'
+      // Đệ quy ẩn cháu khi đang ẩn cha
+      if (!show) setSubtree(row.dataset.wbs, false)
+    })
+  }
+
+  setSubtree(wbs, isHidden)
   if (arrow) arrow.textContent = isHidden ? '▼' : '▶'
 }
 
