@@ -37,6 +37,17 @@ function wbs() {
 }
 
 function initWbs() {
+  // Re-render khi resize (iPad landscape/portrait)
+  if (!window._wbsResizeListener) {
+    window._wbsResizeListener = true
+    let _resizeTimer
+    window.addEventListener('resize', () => {
+      clearTimeout(_resizeTimer)
+      _resizeTimer = setTimeout(() => {
+        if (document.getElementById('wbs-container')) initWbs()
+      }, 300)
+    })
+  }
   const tasks = STATE.tasks
   if (!tasks.length) {
     document.getElementById('wbs-container').innerHTML =
@@ -67,7 +78,7 @@ function initWbs() {
   const rows = tasks.map(t => {
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
     const delay = t.delay_days
-    const isMob = typeof window !== 'undefined' && window.innerWidth < 768
+    const isMob = typeof window !== 'undefined' && window.innerWidth < 1024
     const indent = (t.outline_level - 1) * (isMob ? 10 : 20)
     const hasChildren = tasks.some(c => c.wbs_code.startsWith(t.wbs_code + '.'))
 
