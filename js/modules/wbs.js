@@ -23,14 +23,14 @@ function wbs() {
     <div class="wbs-header" style="position:sticky;top:0;z-index:10">
       <div style="width:40px;flex-shrink:0"></div>
       <div class="wbs-name">Hạng mục / Công tác</div>
-      <div class="wbs-kh-start">KH Bắt đầu</div>
-      <div class="wbs-kh-end">KH Kết thúc</div>
-      <div class="wbs-dur">Ngày KH</div>
+      <div class="wbs-kh-start wbs-hide-mobile">KH Bắt đầu</div>
+      <div class="wbs-kh-end wbs-hide-mobile">KH Kết thúc</div>
+      <div class="wbs-dur wbs-hide-mobile">Ngày KH</div>
       <div class="wbs-pct">Tiến độ</div>
-      <div class="wbs-status" style="width:90px">Đơn vị/KH</div>
-      <div class="wbs-status">Trạng thái</div>
-      <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
-      <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
+      <div class="wbs-status wbs-hide-mobile" style="width:90px">Đơn vị/KH</div>
+      <div class="wbs-status wbs-hide-mobile">Trạng thái</div>
+      <div class="wbs-hide-mobile" style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
+      <div class="wbs-hide-mobile" style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
     </div>
     <div class="wbs-tree" id="wbs-container" style="height:calc(100vh - 230px);overflow-y:auto"></div>
   </div>`
@@ -67,7 +67,8 @@ function initWbs() {
   const rows = tasks.map(t => {
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
     const delay = t.delay_days
-    const indent = (t.outline_level - 1) * 20
+    const isMob = typeof window !== 'undefined' && window.innerWidth < 768
+    const indent = (t.outline_level - 1) * (isMob ? 10 : 20)
     const hasChildren = tasks.some(c => c.wbs_code.startsWith(t.wbs_code + '.'))
 
     // Compute status for summary based on rolled-up pct
@@ -116,9 +117,9 @@ function initWbs() {
             class="wbs-settings-btn">🗑️</span>
         ` : ''}
       </div>
-      <div class="wbs-kh-start">${fmtDateShort(t.kh_start)}</div>
-      <div class="wbs-kh-end">${fmtDateShort(t.kh_finish)}</div>
-      <div class="wbs-dur">${t.kh_duration_days ?? '—'}</div>
+      <div class="wbs-kh-start wbs-hide-mobile">${fmtDateShort(t.kh_start)}</div>
+      <div class="wbs-kh-end wbs-hide-mobile">${fmtDateShort(t.kh_finish)}</div>
+      <div class="wbs-dur wbs-hide-mobile">${t.kh_duration_days ?? '—'}</div>
       <div class="wbs-pct">
         ${(() => {
           // Tính % theo tiền nếu có unit_price, fallback về pct thông thường
@@ -135,12 +136,12 @@ function initWbs() {
             + displayPct + '%' + (t.is_summary && displayPct > 0 ? ' ⟳' : '') + moneyTag + '</div>'
         })()}
       </div>
-      <div class="wbs-status" style="width:90px;font-size:11px;color:var(--gray5);text-align:center">
+      <div class="wbs-status wbs-hide-mobile" style="width:90px;font-size:11px;color:var(--gray5);text-align:center">
         ${t.unit && t.unit !== '%' && t.planned_quantity
           ? `<span style="font-weight:500">${t.actual_quantity||0}/${t.planned_quantity} ${t.unit}</span>`
           : `<span>${t.unit||'%'}</span>`}
       </div>
-      <div class="wbs-status" style="font-size:11px;text-align:center;padding:0 4px">
+      <div class="wbs-status wbs-hide-mobile" style="font-size:11px;text-align:center;padding:0 4px">
         ${(() => {
           // Task cha (summary): chỉ hiện % — không hiện badge trạng thái
           if (t.is_summary) {
@@ -168,11 +169,11 @@ function initWbs() {
           : cv * (t.display_pct||0) / 100
         const fmtM = v => (!v || v === 0) ? '—' : Math.round(v).toLocaleString('vi-VN') + ' ₫'
         return `
-          <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+          <div class="wbs-hide-mobile" style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
             color:${cv>0?'var(--navy)':'var(--gray3)'};font-weight:${cv>0?'500':'400'}">
             ${fmtM(cv)}
           </div>
-          <div style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
+          <div class="wbs-hide-mobile" style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;
             font-weight:500;color:${earnedVal>0?'var(--teal)':'var(--gray3)'}">
             ${cv>0 ? fmtM(earnedVal) : '—'}
           </div>`
