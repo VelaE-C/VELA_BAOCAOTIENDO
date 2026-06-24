@@ -350,3 +350,43 @@ input,select,textarea{font-family:inherit}
   /* WBS container chiều cao */
   #wbs-container { height: calc(100vh - 200px) !important; }
 }
+
+/* ── WBS Mobile: tên wrap + trạng thái ── */
+@media (max-width: 768px) {
+  /* Tên task: cho phép xuống hàng */
+  .wbs-name-text {
+    flex: 1;
+    min-width: 0;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+  /* Tên cell flex column để không bị truncate */
+  .wbs-name {
+    align-items: flex-start !important;
+    padding: 6px 4px 6px 4px;
+  }
+  /* Cột trạng thái mobile: nhỏ gọn */
+  .wbs-mobile-status {
+    display: flex !important;
+    width: 72px !important;
+    flex-shrink: 0;
+    font-size: 10px;
+    padding: 0 3px;
+  }
+  /* Tiến độ mobile: nhỏ hơn */
+  .wbs-pct { width: 64px !important; }
+  /* Badge nhỏ hơn trên mobile */
+  .wbs-mobile-status .badge { font-size: 9px; padding: 2px 4px; }
+}
+
+/* Desktop: wbs-name-text giữ nguyên 1 dòng */
+@media (min-width: 769px) {
+  .wbs-name-text {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
