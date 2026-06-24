@@ -217,10 +217,66 @@ input,select,textarea{font-family:inherit}
 .gv-leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray5)}
 .gv-leg-box{width:24px;height:7px;border-radius:2px}
 
-/* ── Responsive ── */
-@media(max-width:768px){
-  .sidebar{display:none}
-  .content{padding:16px}
-  .form-row{grid-template-columns:1fr}
-  .metrics-row{grid-template-columns:1fr 1fr}
+/* ── Sidebar collapse (desktop) ── */
+.sidebar {
+  transition: width .25s ease, transform .25s ease;
+  overflow: hidden;
+}
+.sidebar-collapsed {
+  width: 0 !important;
+  padding: 0 !important;
+  border-right: none !important;
+}
+
+/* ── Responsive / Mobile ── */
+@media (max-width: 768px) {
+  /* Sidebar: fixed overlay trên mobile */
+  .sidebar {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    bottom: 0;
+    z-index: 160;
+    width: 240px !important;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 20px rgba(0,0,0,.2);
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+  /* Content full width */
+  .content { padding: 12px; }
+  .form-row { grid-template-columns: 1fr; }
+  .metrics-row { grid-template-columns: 1fr 1fr; }
+
+  /* Topbar nhỏ hơn */
+  .topbar { padding: 0 12px; height: 56px; }
+  .topbar-logo span { font-size: 13px; }
+  .topbar-user { display: none; }
+  .topbar-proj { min-width: 140px; font-size: 12px; padding: 5px 10px; }
+
+  /* Card padding nhỏ hơn */
+  .card { padding: 14px; }
+  .metric-card { padding: 12px; }
+  .metric-card .m-val { font-size: 20px; }
+
+  /* Modal full screen trên mobile */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal { max-width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
+
+  /* WBS horizontal scroll */
+  .wbs-tree { overflow-x: auto; }
+  .wbs-header, .wbs-row { min-width: 600px; }
+
+  /* Toast bottom center */
+  .toast { bottom: 16px; right: 16px; left: 16px; text-align: center; }
+
+  /* Btn nhỏ hơn */
+  .btn { padding: 7px 12px; font-size: 12px; }
+  .btn-sm { padding: 5px 8px; font-size: 11px; }
+}
+
+@media (max-width: 480px) {
+  .metrics-row { grid-template-columns: 1fr; }
+  .topbar-proj { min-width: 120px; font-size: 11px; }
 }
