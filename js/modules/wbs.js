@@ -9,8 +9,15 @@ function wbs() {
       <p style="font-size:13px;color:var(--gray4)">${STATE.currentProject?.name || ''}</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-secondary btn-sm" onclick="expandAll()">Mở rộng tất cả</button>
-      <button class="btn btn-secondary btn-sm" onclick="collapseAll()">Thu gọn tất cả</button>
+      <select class="form-input" onchange="collapseToLevel(parseInt(this.value))"
+        style="width:170px;font-size:12px;padding:5px 10px;border-radius:6px">
+        <option value="99">📂 Tất cả cấp độ</option>
+        <option value="1">Cấp 1 — Tổng dự án</option>
+        <option value="2">Cấp 2 — Hạng mục lớn</option>
+        <option value="3">Cấp 3 — Nhóm công tác</option>
+        <option value="4">Cấp 4 — Công tác</option>
+        <option value="5">Cấp 5 — Chi tiết</option>
+      </select>
       <button class="btn btn-secondary btn-sm" onclick="exportWbsExcel()" style="background:#E8F5E9;color:#1B5E20;border-color:#A5D6A7">📊 Xuất Excel</button>
       ${STATE.role !== 'updater' ? `
         <button class="btn btn-secondary btn-sm" onclick="openBulkReschedule()" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A">📅 Điều chỉnh tiến độ</button>
@@ -218,30 +225,27 @@ function wbsRowClick(row, taskId) {
   })
 }
 
-function expandAll() {
-  document.querySelectorAll('.wbs-row').forEach(r => {
-    r.style.display = 'flex'
-    r.classList.remove('collapsed')
-    const t = r.querySelector('.wbs-toggle')
-    if (t && r.dataset.hasChildren==='true') t.textContent = '▼'
-  })
-}
+function expandAll() { collapseToLevel(99) }
+function collapseAll() { collapseToLevel(2) }
 
-function collapseAll() {
-  collapseLevel(2)
-}
-
-function collapseLevel(fromLevel) {
+function collapseToLevel(maxLevel) {
   document.querySelectorAll('.wbs-row').forEach(r => {
     const lv = parseInt(r.dataset.level)
-    if (lv >= fromLevel) {
+    if (lv <= maxLevel) {
+      r.style.display = 'flex'
+      r.classList.remove('collapsed')
+      const t = r.querySelector('.wbs-toggle')
+      if (t && r.dataset.hasChildren==='true') {
+        t.textContent = lv < maxLevel ? '▼' : '▶'
+      }
+    } else {
       r.style.display = 'none'
       r.classList.add('collapsed')
-    } else {
-      r.style.display = 'flex'
     }
   })
 }
+
+function collapseLevel(fromLevel) { collapseToLevel(fromLevel - 1) }
 
 // ═══════════════════════════════════════════════════════════
 // PAGE: UPDATE (mobile-friendly form)
