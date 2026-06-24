@@ -402,3 +402,8 @@ input,select,textarea{font-family:inherit}
     text-overflow: ellipsis;
   }
 }
+
+/* ── Sản lượng mobile ── */
+@media (max-width: 1024px) {
+  .sl-hide-mobile { display: none !important; }
+}
