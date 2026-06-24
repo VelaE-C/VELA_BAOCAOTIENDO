@@ -230,10 +230,16 @@ input,select,textarea{font-family:inherit}
 
 /* ── Responsive / Mobile ── */
 @media (max-width: 768px) {
+  /* Chặn scroll ngang toàn trang */
+  html, body { overflow-x: hidden; max-width: 100vw; }
+  #app { overflow-x: hidden; }
+  .main { overflow-x: hidden; }
+  .content { overflow-x: hidden; }
+
   /* Sidebar: fixed overlay trên mobile */
   .sidebar {
     position: fixed;
-    top: 64px;
+    top: 56px;
     left: 0;
     bottom: 0;
     z-index: 160;
@@ -245,7 +251,7 @@ input,select,textarea{font-family:inherit}
     transform: translateX(0);
   }
   /* Content full width */
-  .content { padding: 12px; }
+  .content { padding: 12px; width: 100%; box-sizing: border-box; }
   .form-row { grid-template-columns: 1fr; }
   .metrics-row { grid-template-columns: 1fr 1fr; }
 
@@ -253,27 +259,35 @@ input,select,textarea{font-family:inherit}
   .topbar { padding: 0 12px; height: 56px; }
   .topbar-logo span { font-size: 13px; }
   .topbar-user { display: none; }
-  .topbar-proj { min-width: 140px; font-size: 12px; padding: 5px 10px; }
+  .topbar-proj { min-width: 100px; max-width: 160px; font-size: 11px; padding: 4px 8px; }
 
-  /* Card padding nhỏ hơn */
-  .card { padding: 14px; }
+  /* Card không tràn */
+  .card { padding: 14px; width: 100%; box-sizing: border-box; overflow: hidden; }
   .metric-card { padding: 12px; }
   .metric-card .m-val { font-size: 20px; }
 
   /* Modal full screen trên mobile */
   .modal-overlay { padding: 0; align-items: flex-end; }
-  .modal { max-width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
+  .modal { max-width: 100vw; width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
 
-  /* WBS horizontal scroll */
-  .wbs-tree { overflow-x: auto; }
+  /* WBS: scroll nội bộ, không đẩy trang */
+  .card:has(.wbs-tree) { padding: 0; overflow: hidden; }
+  .wbs-tree { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .wbs-header, .wbs-row { min-width: 600px; }
 
+  /* Gantt scroll nội bộ */
+  .gv-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
   /* Toast bottom center */
-  .toast { bottom: 16px; right: 16px; left: 16px; text-align: center; }
+  .toast { bottom: 16px; right: 12px; left: 12px; text-align: center; }
 
   /* Btn nhỏ hơn */
   .btn { padding: 7px 12px; font-size: 12px; }
   .btn-sm { padding: 5px 8px; font-size: 11px; }
+
+  /* Bảng tổng hợp không tràn */
+  .tbl { width: 100%; table-layout: fixed; }
+  .tbl td, .tbl th { word-break: break-word; }
 }
 
 @media (max-width: 480px) {
