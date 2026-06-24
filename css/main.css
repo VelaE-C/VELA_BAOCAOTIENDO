@@ -324,3 +324,29 @@ input,select,textarea{font-family:inherit}
     text-overflow: ellipsis;
   }
 }
+
+/* ── WBS Mobile: ẩn cột thừa ── */
+@media (max-width: 768px) {
+  .wbs-hide-mobile { display: none !important; }
+
+  /* WBS row: chỉ còn tên + tiến độ → fill hết width */
+  .wbs-row, .wbs-header {
+    min-width: unset !important;
+    width: 100%;
+  }
+  .wbs-name { flex: 1; min-width: 0; }
+  .wbs-pct { width: 80px; flex-shrink: 0; }
+
+  /* Font nhỏ hơn một chút trên mobile */
+  .wbs-row { font-size: 12px; min-height: 32px; }
+  .wbs-row.level-1 .wbs-name { font-size: 13px; }
+
+  /* Header WBS */
+  .wbs-header { font-size: 10px; }
+
+  /* Container WBS không scroll ngang */
+  .wbs-tree { overflow-x: hidden !important; }
+
+  /* WBS container chiều cao */
+  #wbs-container { height: calc(100vh - 200px) !important; }
+}
