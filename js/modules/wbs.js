@@ -161,9 +161,25 @@ function initWbs() {
       </div>
       <div class="wbs-status wbs-mobile-status" style="font-size:11px;text-align:center;padding:0 4px">
         ${(() => {
-          // Task cha (summary): chỉ hiện % — không hiện badge trạng thái
           if (t.is_summary) {
-            return ''
+            // Tìm max delay từ các task lá con chưa hoàn thành
+            const descendants = tasks.filter(c =>
+              c.wbs_code && t.wbs_code &&
+              c.wbs_code.startsWith(t.wbs_code + '.') &&
+              !c.is_summary
+            )
+            const incomplete = descendants.filter(c => (c.display_pct||0) < 100)
+            if (!incomplete.length) {
+              // Tất cả con đã hoàn thành
+              const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
+              if (pct === 100) return '<span class="badge badge-green" style="font-size:10px">✅ Xong</span>'
+              return ''
+            }
+            const maxDelay = Math.max(...incomplete.map(c => c.delay_days||0))
+            if (maxDelay <= 0) {
+              return '<span class="badge badge-green" style="font-size:10px">🟢 Đúng KH</span>'
+            }
+            return '<span class="badge badge-red" style="white-space:normal;line-height:1.4;font-size:10px">Trễ '+maxDelay+'n</span>'
           }
           // Task lá: hiện đầy đủ
           const d = calcProgressDetail(t)
