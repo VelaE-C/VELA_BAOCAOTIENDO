@@ -36,6 +36,14 @@
 <div id="app" style="display:none">
   <div class="topbar">
     <div class="topbar-left">
+      <button id="btn-sidebar-toggle" onclick="toggleSidebar()" style="
+        background:none;border:none;color:white;font-size:20px;
+        cursor:pointer;padding:6px 8px;border-radius:6px;
+        display:flex;align-items:center;justify-content:center;
+        transition:background .15s;line-height:1;flex-shrink:0"
+        title="Mở/đóng menu"
+        onmouseover="this.style.background='rgba(255,255,255,.15)'"
+        onmouseout="this.style.background='none'">☰</button>
       <div class="topbar-logo" style="display:flex;align-items:center;gap:8px">
         <img src="https://raw.githubusercontent.com/VelaE-C/VELA_CHAMCONG/refs/heads/main/LOGO%20VELA.png"
              style="height:32px;width:auto;object-fit:contain" onerror="this.style.display='none'" alt="Vela E&C Logo">
@@ -50,6 +58,9 @@
       <button class="btn-logout" id="btn-logout">Đăng xuất</button>
     </div>
   </div>
+  <div id="sidebar-overlay" onclick="closeSidebar()" style="
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+    z-index:150;backdrop-filter:blur(2px)"></div>
   <div class="main">
     <div class="sidebar">
       <div class="sidebar-section">Tổng quan</div>
@@ -104,5 +115,35 @@
 <!-- MAIN (chỉ còn payment) -->
 <script src="js/modules/sanluong.js"></script>
 <script src="js/main.js"></script>
+<script>
+function isMobile() { return window.innerWidth < 1024 }
+function toggleSidebar() {
+  const sb = document.querySelector('.sidebar')
+  const ov = document.getElementById('sidebar-overlay')
+  if (!sb) return
+  if (isMobile()) {
+    const isOpen = sb.classList.contains('sidebar-open')
+    if (isOpen) closeSidebar(); else openSidebar()
+  } else {
+    sb.classList.toggle('sidebar-collapsed')
+    localStorage.setItem('sidebarCollapsed', sb.classList.contains('sidebar-collapsed'))
+  }
+}
+function openSidebar() {
+  document.querySelector('.sidebar')?.classList.add('sidebar-open')
+  const ov = document.getElementById('sidebar-overlay')
+  if (ov) ov.style.display = 'block'
+}
+function closeSidebar() {
+  document.querySelector('.sidebar')?.classList.remove('sidebar-open')
+  const ov = document.getElementById('sidebar-overlay')
+  if (ov) ov.style.display = 'none'
+}
+document.addEventListener('DOMContentLoaded', () => {
+  if (!isMobile() && localStorage.getItem('sidebarCollapsed') === 'true') {
+    document.querySelector('.sidebar')?.classList.add('sidebar-collapsed')
+  }
+})
+</script>
 </body>
 </html>
