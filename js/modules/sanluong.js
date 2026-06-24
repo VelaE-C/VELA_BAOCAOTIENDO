@@ -252,7 +252,7 @@ async function loadSanLuongChart(proj, nWeeks) {
 }
 
 function renderSanLuongChart(el, labels, deltas, luyKe, totalCV) {
-  const W = 800, H = 220, PAD_L = 80, PAD_R = 20, PAD_T = 20, PAD_B = 40
+  const W = 800, H = 260, PAD_L = 80, PAD_R = 20, PAD_T = 30, PAD_B = 40
   const chartW = W - PAD_L - PAD_R
   const chartH = H - PAD_T - PAD_B
   const n = labels.length
@@ -268,14 +268,16 @@ function renderSanLuongChart(el, labels, deltas, luyKe, totalCV) {
   }
 
   // Bars
+  const isMobChart = typeof window !== 'undefined' && window.innerWidth < 1024
   const bars = deltas.map((d, i) => {
     const x = PAD_L + i * (chartW / n) + (chartW/n - barW)/2
     const h = Math.max(2, Math.round(d / maxVal * chartH))
     const y = PAD_T + chartH - h
+    const lblSize = isMobChart ? 10 : 8
     return `<g>
       <title>Tuần ${labels[i]}: ${fmtB(d)}</title>
       <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.85"/>
-      ${h > 18 ? `<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="8" fill="var(--gray6)">${fmtB(d)}</text>` : ''}
+      <text x="${x+barW/2}" y="${y-5}" text-anchor="middle" font-size="${lblSize}" fill="#1D4ED8" font-weight="600">${d>0?fmtB(d):''}</text>
     </g>`
   }).join('')
 
@@ -290,10 +292,11 @@ function renderSanLuongChart(el, labels, deltas, luyKe, totalCV) {
   const hdY = totalCV > 0 ? PAD_T + chartH - Math.round(totalCV / maxVal * chartH) : -1
 
   // X labels
+  const xLblSize = (typeof window !== 'undefined' && window.innerWidth < 1024) ? 11 : 9
   const xLabels = labels.map((lbl, i) => {
     const x = PAD_L + i * (chartW / n) + chartW/(n*2)
     const short = lbl.replace('/'+new Date().getFullYear(),'')
-    return `<text x="${x}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--gray5)">${short}</text>`
+    return `<text x="${x}" y="${H-6}" text-anchor="middle" font-size="${xLblSize}" fill="var(--gray5)" font-weight="500">${short}</text>`
   }).join('')
 
   // Y axis
@@ -324,7 +327,11 @@ function renderSanLuongChart(el, labels, deltas, luyKe, totalCV) {
       ${luyKe.map((v,i) => {
         const x = PAD_L + i*(chartW/n) + chartW/(n*2)
         const y = PAD_T + chartH - Math.round(v/maxVal*chartH)
-        return `<circle cx="${x}" cy="${y}" r="3" fill="#D97706"/>`
+        const lblSize = (typeof window !== 'undefined' && window.innerWidth < 1024) ? 10 : 8
+        return `<g>
+          <circle cx="${x}" cy="${y}" r="4" fill="#D97706"/>
+          <text x="${x}" y="${y-8}" text-anchor="middle" font-size="${lblSize}" fill="#D97706" font-weight="700">${fmtB(v)}</text>
+        </g>`
       }).join('')}
       ${xLabels}
     </svg>`
@@ -385,16 +392,16 @@ function renderSanLuongTable(tasks) {
         ${hasChildren ? `<span class="sl-arrow" style="margin-right:4px;font-size:10px">▼</span>` : '<span style="margin-right:12px"></span>'}
         ${t.name}
       </td>
-      <td style="padding:7px 8px;text-align:center;font-size:11px;color:${txtColor};opacity:.8">
+      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:center;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : (t.unit||'%')}
       </td>
-      <td style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
+      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : fmtN(t.planned_quantity)}
       </td>
-      <td style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
+      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : fmtN(t.actual_quantity)}
       </td>
-      <td style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
+      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : fmtM(t.unit_price)}
       </td>
       <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:500;color:${t.outline_level<=2?'#93C5FD':cv>0?'var(--navy)':'var(--gray3)'}">
