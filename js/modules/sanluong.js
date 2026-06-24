@@ -46,8 +46,8 @@ function sanluong() {
         <button class="btn btn-secondary btn-sm" onclick="slCollapseLevel(99)" style="font-size:11px">Tất cả</button>
       </div>
     </div>
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;min-width:700px" id="sl-table">
+    <div style="overflow-x:auto;max-width:100%">
+      <table style="width:100%;border-collapse:collapse" id="sl-table">
         <thead>
           <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:5">
             <th style="padding:9px 12px;text-align:left;min-width:220px">Hạng mục / Công tác</th>
@@ -392,18 +392,23 @@ function renderSanLuongTable(tasks) {
         ${hasChildren ? `<span class="sl-arrow" style="margin-right:4px;font-size:10px">▼</span>` : '<span style="margin-right:12px"></span>'}
         ${t.name}
       </td>
-      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:center;font-size:11px;color:${txtColor};opacity:.8">
+      ${(() => {
+        const mob = window.innerWidth < 900
+        const hideStyle = mob ? 'display:none' : ''
+        return `
+      <td style="${hideStyle};padding:7px 8px;text-align:center;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : (t.unit||'%')}
       </td>
-      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
+      <td style="${hideStyle};padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : fmtN(t.planned_quantity)}
       </td>
-      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
+      <td style="${hideStyle};padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : fmtN(t.actual_quantity)}
       </td>
-      <td class="sl-hide-mobile" style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
+      <td style="${hideStyle};padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
         ${t.is_summary ? '' : fmtM(t.unit_price)}
-      </td>
+      </td>`
+      })()}
       <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:500;color:${t.outline_level<=2?'#93C5FD':cv>0?'var(--navy)':'var(--gray3)'}">
         ${fmtM(cv)}
       </td>
