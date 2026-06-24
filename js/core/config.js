@@ -27,74 +27,133 @@ let STATE = {
   projects: [],
   currentProject: null,
   tasks: [],
-  progress: {},  // task_id -> latest progress
+  progress: {},
   photos: [],
 }
 
 // ═══════════════════════════════════════════════════════════
-// ROLL-UP: Tính % task cha từ task con (giống MS Project)
+// ROLLUP TIỀN — tính _contractValue và _earnedValue cho toàn bộ cây
+// Chạy TRƯỚC computeRollupPct để % tiền dùng được cho tất cả panel
 // ═══════════════════════════════════════════════════════════
-function computeRollupPct(tasks) {
-  // Build a map: wbs_code -> task
-  const map = {}
-  tasks.forEach(t => { map[t.wbs_code] = t })
-
-  // Work bottom-up: sort by outline_level desc
+function computeRollupMoney(tasks) {
   const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
 
   sorted.forEach(t => {
-    if (!t.is_summary) return
+    if (!t.is_summary) {
+      // Task lá: contractValue = unit_price × planned_quantity
+      t._contractValue = (t.unit_price || 0) * (t.planned_quantity || 1)
 
-    // KEY TASK: nếu có key_task_id → lấy % từ task đó
+      // Task lá: earnedValue ưu tiên theo tiền, fallback theo KL, fallback pct
+      if (t._contractValue > 0) {
+        // TH1: có giá → earned = contractValue × pct / 100
+        t._earnedValue = t._contractValue * (t.pct_complete || 0) / 100
+      } else if (t.planned_quantity > 0 && t.unit && t.unit !== '%') {
+        // TH2: có KL + đơn vị → earned tính theo KL thực / KL kế hoạch
+        const klPct = Math.min(100, Math.round((t.actual_quantity || 0) / t.planned_quantity * 100))
+        t._klPct = klPct  // lưu lại để dùng riêng
+        t._earnedValue = 0  // không có tiền nên không đóng góp vào tiền cha
+      } else {
+        t._earnedValue = 0
+        t._klPct = t.pct_complete || 0
+      }
+      return
+    }
+
+    // Task cha: rollup từ con trực tiếp
+    const children = tasks.filter(c =>
+      c.wbs_code && t.wbs_code &&
+      c.wbs_code.startsWith(t.wbs_code + '.') &&
+      c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
+    )
+    t._contractValue = children.reduce((s, c) => s + (c._contractValue || 0), 0)
+    t._earnedValue   = children.reduce((s, c) => s + (c._earnedValue  || 0), 0)
+  })
+
+  return tasks
+}
+
+// ═══════════════════════════════════════════════════════════
+// ROLL-UP: Tính % task cha từ task con
+// Ưu tiên % tiền nếu có _contractValue > 0
+// Fallback về weighted average by duration nếu không có tiền
+// ═══════════════════════════════════════════════════════════
+function computeRollupPct(tasks) {
+  // Bước 1: rollup tiền trước
+  computeRollupMoney(tasks)
+
+  const map = {}
+  tasks.forEach(t => { map[t.wbs_code] = t })
+
+  // Bước 2: tính display_pct bottom-up
+  const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
+
+  sorted.forEach(t => {
+    if (!t.is_summary) {
+      // Task lá
+      if ((t.unit_price || 0) > 0 && t._contractValue > 0) {
+        // TH1: có giá → % theo tiền
+        t.display_pct = Math.min(100, Math.round(t._earnedValue / t._contractValue * 100))
+      } else if (t.planned_quantity > 0 && t.unit && t.unit !== '%') {
+        // TH2: có KL + đơn vị → % theo KL
+        t.display_pct = Math.min(100, Math.round((t.actual_quantity || 0) / t.planned_quantity * 100))
+      } else {
+        // Fallback: pct_complete
+        t.display_pct = t.pct_complete || 0
+      }
+      t._rollup_pct = t.display_pct
+      return
+    }
+
+    // KEY TASK override
     if (t.key_task_id) {
       const keyTask = tasks.find(k => k.id === t.key_task_id)
       if (keyTask) {
         const kp = keyTask._rollup_pct !== undefined ? keyTask._rollup_pct : (keyTask.pct_complete || 0)
         t._rollup_pct = kp
+        t.display_pct = kp
         t._is_key_driven = true
         return
       }
     }
 
-    // FALLBACK: weighted average by kh_duration_days
     const children = tasks.filter(c =>
+      c.wbs_code && t.wbs_code &&
       c.wbs_code.startsWith(t.wbs_code + '.') &&
       c.wbs_code.split('.').length === t.wbs_code.split('.').length + 1
     )
-    if (!children.length) return
-
-    let totalWeight = 0, weightedPct = 0
-    children.forEach(c => {
-      const w = c.kh_duration_days || 1
-      const p = c._rollup_pct !== undefined ? c._rollup_pct : (c.pct_complete || 0)
-      weightedPct += p * w
-      totalWeight += w
-    })
-    t._rollup_pct = totalWeight > 0 ? Math.round(weightedPct / totalWeight) : 0
-  })
-
-  // Assign rollup_pct back — leaf tasks use pct_complete, summary use _rollup_pct
-  tasks.forEach(t => {
-    if (t.is_summary) {
-      t.display_pct = t._rollup_pct !== undefined ? t._rollup_pct : (t.pct_complete || 0)
-    } else {
+    if (!children.length) {
       t.display_pct = t.pct_complete || 0
+      t._rollup_pct = t.display_pct
+      return
     }
+
+    if (t._contractValue > 0) {
+      // TH1: task cha có tổng tiền → % = earnedValue / contractValue
+      t._rollup_pct = Math.min(100, Math.round(t._earnedValue / t._contractValue * 100))
+    } else {
+      // TH2: không có tiền → weighted average by duration (như cũ)
+      let totalWeight = 0, weightedPct = 0
+      children.forEach(c => {
+        const w = c.kh_duration_days || 1
+        const p = c._rollup_pct !== undefined ? c._rollup_pct : (c.pct_complete || 0)
+        weightedPct += p * w
+        totalWeight += w
+      })
+      t._rollup_pct = totalWeight > 0 ? Math.round(weightedPct / totalWeight) : 0
+    }
+    t.display_pct = t._rollup_pct
   })
+
   return tasks
 }
 
-// ── Roll-up delay: cha = max delay của các con trực tiếp ────────────────
+// ── Roll-up delay ────────────────────────────────────────────────────────
 function computeRollupDelay(tasks) {
-  // Build today once
   const today = new Date(); today.setHours(0,0,0,0)
-
-  // Work bottom-up
   const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
 
   sorted.forEach(parent => {
     if (!parent.is_summary) {
-      // Leaf: tính delay trực tiếp, cache vào _delay
       const d = calcProgressDetail(parent)
       parent._delay = d.delayDays || 0
       parent._delayLabel = d.label
@@ -102,7 +161,6 @@ function computeRollupDelay(tasks) {
       return
     }
 
-    // Summary: max delay của con trực tiếp
     const directChildren = tasks.filter(c =>
       c.wbs_code && parent.wbs_code &&
       c.wbs_code.startsWith(parent.wbs_code + '.') &&
@@ -110,7 +168,6 @@ function computeRollupDelay(tasks) {
     )
 
     if (!directChildren.length) {
-      // Không có con → tính như leaf
       const d = calcProgressDetail(parent)
       parent._delay = d.delayDays || 0
       parent._delayLabel = d.label
@@ -118,18 +175,13 @@ function computeRollupDelay(tasks) {
       return
     }
 
-    // ── GUARD: Summary đã hoàn thành → không rollup từ children ──────────
-    // display_pct đã được set bởi computeRollupPct() chạy trước
     const parentPct = parent.display_pct !== undefined ? parent.display_pct : (parent.pct_complete || 0)
     if (parentPct === 100) {
-      // Dùng tt_finish (nếu có) so với kh_finish để tính lệch thực tế
       const khEnd    = parent.kh_finish ? new Date(parent.kh_finish) : null
       const ttFinish = parent.tt_finish ? new Date(parent.tt_finish) : null
       if (ttFinish && khEnd) {
         const d = Math.round((ttFinish - khEnd) / 86400000)
-        const label = d > 0  ? `Trễ ${d} ngày`
-                    : d < 0  ? `Hoàn thành sớm ${Math.abs(d)} ngày`
-                    : `Đúng KH`
+        const label = d > 0 ? `Trễ ${d} ngày` : d < 0 ? `Hoàn thành sớm ${Math.abs(d)} ngày` : `Đúng KH`
         parent._delay = d
         parent._delayLabel = label
         parent._delayDetail = { delayDays: d, label, done: true, hasUnit: false }
@@ -141,19 +193,15 @@ function computeRollupDelay(tasks) {
       return
     }
 
-    // Max delay trong con (đã được tính ở bước trước vì sort bottom-up)
     const maxDelay = directChildren.reduce((mx, c) => Math.max(mx, c._delay || 0), 0)
     const worstChild = directChildren.find(c => (c._delay || 0) === maxDelay)
-
     parent._delay = maxDelay
+
     if (maxDelay > 0) {
-      const childLabel = worstChild?._delayDetail?.hasUnit
+      parent._delayLabel = worstChild?._delayDetail?.hasUnit
         ? `Trễ ${maxDelay} ngày · thiếu ${worstChild._delayDetail.missingQty} ${worstChild._delayDetail.unit}`
         : `Trễ ${maxDelay} ngày`
-      parent._delayLabel = childLabel
-      parent._delay = maxDelay
     } else {
-      // Tất cả đúng hoặc sớm → lấy max "sớm" (delayDays âm = sớm)
       const minDelay = directChildren.reduce((mn,c) => Math.min(mn, c._delay||0), 0)
       if (minDelay < 0) {
         const bestChild = directChildren.find(c => (c._delay||0) === minDelay)
@@ -161,7 +209,7 @@ function computeRollupDelay(tasks) {
         parent._delayLabel = bestChild?._delayDetail?.hasUnit
           ? `Sớm ${aheadDays} ngày · dư ${bestChild._delayDetail.aheadQty||0} ${bestChild._delayDetail.unit}`
           : `Sớm ${aheadDays} ngày`
-        parent._delay = minDelay  // âm = sớm
+        parent._delay = minDelay
       } else {
         parent._delayLabel = 'Đúng KH'
         parent._delay = 0
@@ -175,33 +223,24 @@ function computeRollupDelay(tasks) {
 
 // ═══════════════════════════════════════════════════════════
 // ROLLUP tt_start / tt_finish cho summary tasks từ con
-// Chạy sau loadProjectData để Gantt hiện bar thực tế ở summary
 // ═══════════════════════════════════════════════════════════
 function computeRollupActualDates(tasks) {
-  // Sort bottom-up
   const sorted = [...tasks].sort((a,b) => b.outline_level - a.outline_level)
 
   sorted.forEach(parent => {
     if (!parent.is_summary) return
-
-    // Direct children only
     const children = tasks.filter(c =>
       c.wbs_code && parent.wbs_code &&
       c.wbs_code.startsWith(parent.wbs_code + '.') &&
       c.wbs_code.split('.').length === parent.wbs_code.split('.').length + 1
     )
     if (!children.length) return
-
-    // tt_start cha = MIN tt_start con (chỉ con có tt_start)
-    const starts  = children.map(c => c._tt_start || c.tt_start).filter(Boolean).sort()
-    // tt_finish cha = MAX tt_finish con (hoặc dùng today nếu đang thi công)
+    const starts   = children.map(c => c._tt_start || c.tt_start).filter(Boolean).sort()
     const finishes = children.map(c => c._tt_finish || c.tt_finish).filter(Boolean).sort()
-
-    parent._tt_start  = starts[0]  || null
+    parent._tt_start  = starts[0] || null
     parent._tt_finish = finishes[finishes.length - 1] || null
   })
 
-  // Assign lại để Gantt dùng được
   tasks.forEach(t => {
     if (t.is_summary) {
       t.tt_start  = t._tt_start  || t.tt_start  || null
@@ -213,13 +252,11 @@ function computeRollupActualDates(tasks) {
 
 // ═══════════════════════════════════════════════════════════
 // COMPUTE PARENT DATES từ task con (lưu vào DB)
-// kh_start cha = MIN start con, kh_finish cha = MAX finish con
 // ═══════════════════════════════════════════════════════════
 async function recomputeParentDates(projectId) {
   const tasks = STATE.tasks
   if (!tasks.length) return
 
-  // Sort summary tasks by level desc (bottom-up)
   const summaries = tasks
     .filter(t => t.is_summary)
     .sort((a,b) => b.outline_level - a.outline_level)
@@ -227,26 +264,22 @@ async function recomputeParentDates(projectId) {
   const updates = []
 
   summaries.forEach(parent => {
-    // Direct children only
     const children = tasks.filter(c =>
       c.wbs_code.startsWith(parent.wbs_code + '.') &&
       c.wbs_code.split('.').length === parent.wbs_code.split('.').length + 1
     )
     if (!children.length) return
 
-    const starts  = children.map(c => c.kh_start).filter(Boolean).sort()
+    const starts   = children.map(c => c.kh_start).filter(Boolean).sort()
     const finishes = children.map(c => c.kh_finish).filter(Boolean).sort()
-
     const newStart  = starts[0] || null
     const newFinish = finishes[finishes.length - 1] || null
     const newDur = newStart && newFinish
       ? Math.round((new Date(newFinish) - new Date(newStart)) / 86400000)
       : parent.kh_duration_days
 
-    // Only update if changed
     if (newStart !== parent.kh_start || newFinish !== parent.kh_finish) {
       updates.push({ id: parent.id, kh_start: newStart, kh_finish: newFinish, kh_duration_days: newDur })
-      // Update local state too so children calc correctly
       parent.kh_start  = newStart
       parent.kh_finish = newFinish
       parent.kh_duration_days = newDur
