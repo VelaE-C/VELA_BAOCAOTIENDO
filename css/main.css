@@ -277,6 +277,36 @@ input,select,textarea{font-family:inherit}
 }
 
 @media (max-width: 480px) {
-  .metrics-row { grid-template-columns: 1fr; }
+  /* Metrics 2 cột trên phone nhỏ */
+  .metrics-row { grid-template-columns: 1fr 1fr; gap: 8px; }
   .topbar-proj { min-width: 120px; font-size: 11px; }
+  /* Content sát viền hơn */
+  .content { padding: 8px; }
+  .card { padding: 12px; margin-bottom: 10px; }
+  /* Bảng tiến độ lớn hơn trên mobile */
+  .tbl th, .tbl td { padding: 7px 6px; font-size: 11px; }
+  /* Dashboard table: ẩn cột lệch để vừa màn hình */
+  .dash-col-delay { display: none; }
+}
+
+/* ── Dashboard table mobile ── */
+@media (max-width: 768px) {
+  #dash-summary-table .tbl th:nth-child(5),
+  #dash-summary-table .tbl td:nth-child(5) { display: none; }
+  #dash-summary-table .tbl th:nth-child(6),
+  #dash-summary-table .tbl td:nth-child(6) { display: none; }
+  #dash-summary-table .tbl { table-layout: fixed; width: 100%; }
+  #dash-summary-table .tbl th:nth-child(1),
+  #dash-summary-table .tbl td:nth-child(1) { width: 38%; }
+  #dash-summary-table .tbl th:nth-child(2),
+  #dash-summary-table .tbl td:nth-child(2) { width: 19%; }
+  #dash-summary-table .tbl th:nth-child(3),
+  #dash-summary-table .tbl td:nth-child(3) { width: 19%; }
+  #dash-summary-table .tbl th:nth-child(4),
+  #dash-summary-table .tbl td:nth-child(4) { width: 24%; }
+  #dash-summary-table .tbl td:nth-child(1) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
