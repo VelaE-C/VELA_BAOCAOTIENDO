@@ -46,8 +46,8 @@ function sanluong() {
         <button class="btn btn-secondary btn-sm" onclick="slCollapseLevel(99)" style="font-size:11px">Tất cả</button>
       </div>
     </div>
-    <div style="overflow-x:auto;max-width:100%">
-      <table style="width:100%;border-collapse:collapse" id="sl-table">
+    <div style="overflow-x:hidden;width:100%">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed" id="sl-table">
         <thead>
           <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:5">
             <th style="padding:9px 12px;text-align:left;min-width:220px">Hạng mục / Công tác</th>
@@ -339,6 +339,7 @@ function renderSanLuongChart(el, labels, deltas, luyKe, totalCV) {
 
 // ── Bảng hạng mục ────────────────────────────────────────────
 function renderSanLuongTable(tasks) {
+  const mob = window.innerWidth < 900
   const tbody = document.getElementById('sl-tbody')
   if (!tbody) return
 
@@ -378,9 +379,9 @@ function renderSanLuongTable(tasks) {
 
     // % bar
     const pctColor = pct===100?'var(--green)':pct>50?'var(--blue)':pct>0?'var(--amber)':'var(--gray3)'
-    const pctBar = `<div style="height:4px;background:var(--gray2);border-radius:2px;margin-bottom:2px">
+    const pctBar = `<div style="height:4px;background:var(--gray2);border-radius:2px;margin-bottom:2px;width:100%">
       <div style="width:${pct}%;height:100%;background:${pctColor};border-radius:2px"></div></div>
-      <span style="font-size:10px;font-weight:600;color:${pctColor}">${pct}%</span>`
+      <span style="font-size:10px;font-weight:700;color:${pctColor}">${pct}%</span>`
 
     return `<tr data-level="${t.outline_level}"
         data-wbs="${t.wbs_code||''}"
@@ -392,30 +393,17 @@ function renderSanLuongTable(tasks) {
         ${hasChildren ? `<span class="sl-arrow" style="margin-right:4px;font-size:10px">▼</span>` : '<span style="margin-right:12px"></span>'}
         ${t.name}
       </td>
-      ${(() => {
-        const mob = window.innerWidth < 900
-        const hideStyle = mob ? 'display:none' : ''
-        return `
-      <td style="${hideStyle};padding:7px 8px;text-align:center;font-size:11px;color:${txtColor};opacity:.8">
-        ${t.is_summary ? '' : (t.unit||'%')}
-      </td>
-      <td style="${hideStyle};padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
-        ${t.is_summary ? '' : fmtN(t.planned_quantity)}
-      </td>
-      <td style="${hideStyle};padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
-        ${t.is_summary ? '' : fmtN(t.actual_quantity)}
-      </td>
-      <td style="${hideStyle};padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">
-        ${t.is_summary ? '' : fmtM(t.unit_price)}
-      </td>`
-      })()}
-      <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:500;color:${t.outline_level<=2?'#93C5FD':cv>0?'var(--navy)':'var(--gray3)'}">
+      ${mob?'':('<td style="padding:7px 8px;text-align:center;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':t.unit||'%')+'</td>')}
+      ${mob?'':('<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':fmtN(t.planned_quantity))+'</td>')}
+      ${mob?'':('<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':fmtN(t.actual_quantity))+'</td>')}
+      ${mob?'':('<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':fmtM(t.unit_price))+'</td>')}
+      <td style="padding:7px 6px;text-align:right;font-size:11px;font-weight:500;white-space:nowrap;color:${t.outline_level<=2?'#93C5FD':cv>0?'var(--navy)':'var(--gray3)'}">
         ${fmtM(cv)}
       </td>
-      <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:600;color:${t.outline_level<=2?'#6EE7B7':earned>0?'var(--teal)':'var(--gray3)'}">
+      <td style="padding:7px 6px;text-align:right;font-size:11px;font-weight:600;white-space:nowrap;color:${t.outline_level<=2?'#6EE7B7':earned>0?'var(--teal)':'var(--gray3)'}">
         ${cv>0 ? fmtM(earned) : '—'}
       </td>
-      <td style="padding:7px 8px;text-align:center;min-width:70px">
+      <td style="padding:7px 4px;text-align:center;width:52px">
         ${cv>0 ? pctBar : ''}
       </td>
     </tr>`
