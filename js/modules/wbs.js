@@ -28,7 +28,7 @@ function wbs() {
       <div class="wbs-dur wbs-hide-mobile">Ngày KH</div>
       <div class="wbs-pct">Tiến độ</div>
       <div class="wbs-status wbs-hide-mobile" style="width:90px">Đơn vị/KH</div>
-      <div class="wbs-status wbs-hide-mobile">Trạng thái</div>
+      <div class="wbs-status wbs-mobile-status">Trạng thái</div>
       <div class="wbs-hide-mobile" style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Giá trị HĐ (VND)</div>
       <div class="wbs-hide-mobile" style="width:140px;text-align:right;padding:0 8px;flex-shrink:0;font-size:11px;font-weight:600;color:rgba(255,255,255,.8)">Sản lượng TH (VND)</div>
     </div>
@@ -92,7 +92,7 @@ function initWbs() {
          style="padding-left:${indent}px">
       <div class="wbs-toggle">${hasChildren ? '▼' : ''}</div>
       <div class="wbs-name" title="${t.name}" style="display:flex;align-items:center;gap:6px">
-        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.name}</span>
+        <span class="wbs-name-text">${t.name}</span>
         ${t.is_summary && t.key_task_id ? '<span title="Key Task đang active" style="font-size:11px;color:var(--amber)">🔑</span>' : ''}
         ${'${STATE.role}' !== 'updater' ? `
           <span onclick="event.stopPropagation();openTaskSettings('${t.id}')"
@@ -141,7 +141,7 @@ function initWbs() {
           ? `<span style="font-weight:500">${t.actual_quantity||0}/${t.planned_quantity} ${t.unit}</span>`
           : `<span>${t.unit||'%'}</span>`}
       </div>
-      <div class="wbs-status wbs-hide-mobile" style="font-size:11px;text-align:center;padding:0 4px">
+      <div class="wbs-status wbs-mobile-status" style="font-size:11px;text-align:center;padding:0 4px">
         ${(() => {
           // Task cha (summary): chỉ hiện % — không hiện badge trạng thái
           if (t.is_summary) {
