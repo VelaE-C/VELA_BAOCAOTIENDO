@@ -83,9 +83,6 @@ async function initApp(user) {
   if (STATE.role === 'admin') {
     const su = document.getElementById('sidebar-users')
     if (su) su.style.display = 'flex'
-    // Portfolio BGD ẩn — thông tin tài chính đã tích hợp vào Dashboard từng dự án
-    // const sp = document.getElementById('sidebar-portfolio')
-    // if (sp) sp.style.display = 'flex'
   }
 
   navigate('dashboard')
@@ -98,7 +95,7 @@ async function loadProjectData(projectId) {
       .select('*').eq('project_id', projectId).order('sort_order')
     STATE.tasks = computeRollupPct(tasks || [])
     computeRollupDelay(STATE.tasks)
-    computeRollupActualDates(STATE.tasks)  // rollup tt_start/finish cho Gantt
+    computeRollupActualDates(STATE.tasks)
 
     STATE.progress = {}
     STATE.tasks.forEach(t => { STATE.progress[t.id] = t })
@@ -115,7 +112,11 @@ function navigate(page) {
     el.classList.toggle('active', el.dataset.page === page)
   })
   const content = document.getElementById('main-content')
-  const pages = { dashboard, wbs, photos, compare, gantt, importPage, users: usersPage, portfolio: portfolioPage, payment: paymentPage }
+  const pages = {
+    dashboard, wbs, photos, compare, gantt,
+    importPage, users: usersPage, portfolio: portfolioPage,
+    payment: paymentPage, sanluong
+  }
   const fn = pages[page === 'import' ? 'importPage' : page]
   if (fn) content.innerHTML = fn()
   if (page === 'wbs')       initWbs()
@@ -127,6 +128,7 @@ function navigate(page) {
   if (page === 'users')     initUsersPage()
   if (page === 'portfolio') initPortfolio()
   if (page === 'payment')   initPayment()
+  if (page === 'sanluong')  loadSanLuong()
 }
 
 // ═══════════════════════════════════════════════════════════
