@@ -9,14 +9,18 @@ function wbs() {
       <p style="font-size:13px;color:var(--gray4)">${STATE.currentProject?.name || ''}</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <select class="form-input" onchange="collapseToLevel(parseInt(this.value))"
-        style="width:170px;font-size:12px;padding:5px 10px;border-radius:6px">
+      <select class="form-input" id="wbs-level-select"
+        onchange="collapseToLevel(parseInt(this.value))"
+        style="width:180px;font-size:12px;padding:5px 10px;border-radius:6px">
         <option value="99">📂 Tất cả cấp độ</option>
         <option value="1">Cấp 1 — Tổng dự án</option>
         <option value="2">Cấp 2 — Hạng mục lớn</option>
         <option value="3">Cấp 3 — Nhóm công tác</option>
         <option value="4">Cấp 4 — Công tác</option>
         <option value="5">Cấp 5 — Chi tiết</option>
+        <option value="6">Cấp 6 — Chi tiết +1</option>
+        <option value="7">Cấp 7 — Chi tiết +2</option>
+        <option value="8">Cấp 8 — Chi tiết +3</option>
       </select>
       <button class="btn btn-secondary btn-sm" onclick="exportWbsExcel()" style="background:#E8F5E9;color:#1B5E20;border-color:#A5D6A7">📊 Xuất Excel</button>
       ${STATE.role !== 'updater' ? `
@@ -216,6 +220,21 @@ function initWbs() {
   }).join('')
 
   document.getElementById('wbs-container').innerHTML = rows
+
+  // Auto-detect max level trong dự án và cập nhật dropdown
+  const maxLv = Math.max(...tasks.map(t => t.outline_level || 1))
+  const sel = document.getElementById('wbs-level-select')
+  if (sel) {
+    // Ẩn các option cao hơn max level thực tế
+    Array.from(sel.options).forEach(opt => {
+      const v = parseInt(opt.value)
+      if (v !== 99 && v > maxLv) opt.style.display = 'none'
+      else opt.style.display = ''
+    })
+    // Default: hiện tất cả
+    sel.value = '99'
+  }
+
   // Default: show all
   expandAll()
 }
