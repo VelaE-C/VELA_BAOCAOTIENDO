@@ -46,23 +46,7 @@ function sanluong() {
         <button class="btn btn-secondary btn-sm" onclick="slCollapseLevel(99)" style="font-size:11px">Tất cả</button>
       </div>
     </div>
-    <div style="overflow-x:hidden;width:100%">
-      <table style="width:100%;border-collapse:collapse;table-layout:fixed" id="sl-table">
-        <thead>
-          <tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:5">
-            <th style="padding:9px 12px;text-align:left;min-width:220px">Hạng mục / Công tác</th>
-            <th style="padding:9px 8px;text-align:center;width:60px">Đơn vị</th>
-            <th style="padding:9px 8px;text-align:right;width:80px">KL KH</th>
-            <th style="padding:9px 8px;text-align:right;width:80px">KL TH</th>
-            <th style="padding:9px 8px;text-align:right;width:110px">Đơn giá (₫)</th>
-            <th style="padding:9px 8px;text-align:right;width:130px">Giá trị HĐ (₫)</th>
-            <th style="padding:9px 8px;text-align:right;width:130px">Sản lượng TH (₫)</th>
-            <th style="padding:9px 8px;text-align:center;width:80px">% Đạt</th>
-          </tr>
-        </thead>
-        <tbody id="sl-tbody"></tbody>
-      </table>
-    </div>
+    <div id="sl-table-wrap"></div>
     <!-- Tổng footer -->
     <div id="sl-footer" style="background:var(--navy);color:white;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <span style="font-size:13px;font-weight:700">TỔNG CỘNG</span>
@@ -79,17 +63,15 @@ function sanluong() {
 let _slExpandedLevels = 99
 function slCollapseLevel(maxLevel) {
   _slExpandedLevels = maxLevel
-  document.querySelectorAll('#sl-tbody tr[data-level]').forEach(row => {
+  // Hỗ trợ cả mobile (div) và desktop (tr)
+  const selector = '#sl-mob-list [data-level], #sl-tbody tr[data-level]'
+  document.querySelectorAll(selector).forEach(row => {
     const lv = parseInt(row.dataset.level)
     row.style.display = lv <= maxLevel ? '' : 'none'
-  })
-  // Update toggle arrows
-  document.querySelectorAll('#sl-tbody tr[data-level]').forEach(row => {
-    const lv = parseInt(row.dataset.level)
     const arrow = row.querySelector('.sl-arrow')
     if (arrow) {
       const wbs = row.dataset.wbs
-      const hasChildren = document.querySelector(`#sl-tbody tr[data-parent-wbs="${wbs}"]`)
+      const hasChildren = document.querySelector(`[data-parent-wbs="${wbs}"]`)
       if (hasChildren) arrow.textContent = lv < maxLevel ? '▼' : '▶'
     }
   })
@@ -98,19 +80,29 @@ function slCollapseLevel(maxLevel) {
 function slToggleRow(wbs, level) {
   const children = document.querySelectorAll(`#sl-tbody tr[data-parent-wbs="${wbs}"]`)
   if (!children.length) return
-  const firstChild = children[0]
-  const isHidden = firstChild.style.display === 'none'
+  const isHidden = children[0].style.display === 'none'
   const arrow = document.querySelector(`#sl-tbody tr[data-wbs="${wbs}"] .sl-arrow`)
-
   children.forEach(row => {
     row.style.display = isHidden ? '' : 'none'
-    // Ẩn/hiện cháu theo trạng thái cha
     if (!isHidden) {
-      const childWbs = row.dataset.wbs
-      const grandChildren = document.querySelectorAll(`#sl-tbody tr[data-parent-wbs="${childWbs}"]`)
-      grandChildren.forEach(r => r.style.display = 'none')
-      const childArrow = row.querySelector('.sl-arrow')
-      if (childArrow) childArrow.textContent = '▶'
+      document.querySelectorAll(`#sl-tbody tr[data-parent-wbs="${row.dataset.wbs}"]`).forEach(r => r.style.display = 'none')
+      const a = row.querySelector('.sl-arrow'); if (a) a.textContent = '▶'
+    }
+  })
+  if (arrow) arrow.textContent = isHidden ? '▼' : '▶'
+}
+
+// Mobile toggle dùng div
+function slToggleRowMob(wbs) {
+  const children = document.querySelectorAll(`#sl-mob-list [data-parent-wbs="${wbs}"]`)
+  if (!children.length) return
+  const isHidden = children[0].style.display === 'none'
+  const arrow = document.querySelector(`#sl-mob-list [data-wbs="${wbs}"] .sl-arrow`)
+  children.forEach(row => {
+    row.style.display = isHidden ? '' : 'none'
+    if (!isHidden) {
+      document.querySelectorAll(`#sl-mob-list [data-parent-wbs="${row.dataset.wbs}"]`).forEach(r => r.style.display = 'none')
+      const a = row.querySelector('.sl-arrow'); if (a) a.textContent = '▶'
     }
   })
   if (arrow) arrow.textContent = isHidden ? '▼' : '▶'
@@ -340,76 +332,140 @@ function renderSanLuongChart(el, labels, deltas, luyKe, totalCV) {
 // ── Bảng hạng mục ────────────────────────────────────────────
 function renderSanLuongTable(tasks) {
   const mob = window.innerWidth < 900
-  const tbody = document.getElementById('sl-tbody')
-  if (!tbody) return
+  const wrap = document.getElementById('sl-table-wrap')
+  if (!wrap) return
 
   const fmtN = v => (!v||v===0) ? '—' : Math.round(v).toLocaleString('vi-VN')
   const fmtM = v => (!v||v===0) ? '—' : Math.round(v).toLocaleString('vi-VN') + ' ₫'
+  const fmtMshort = v => {
+    if (!v || v===0) return '—'
+    if (v >= 1e9) return (v/1e9).toFixed(1) + 'tỷ ₫'
+    if (v >= 1e6) return Math.round(v/1e6) + 'tr ₫'
+    return Math.round(v).toLocaleString('vi-VN') + ' ₫'
+  }
 
   let totalCV = 0, totalEarned = 0
 
-  const rows = tasks.map(t => {
-    const cv      = t._contractValue || 0
-    const earned  = t._earnedValue   || 0
-    const pct     = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
-    const indent  = (t.outline_level - 1) * 16
-    const isMob   = window.innerWidth < 1024
+  if (mob) {
+    // ── MOBILE: div list, không dùng table ───────────────────
+    const rows = tasks.map(t => {
+      const cv     = t._contractValue || 0
+      const earned = t._earnedValue   || 0
+      const pct    = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
+      const indent = (t.outline_level - 1) * 10
+      if (!t.is_summary) { totalCV += cv; totalEarned += earned }
 
-    if (!t.is_summary) totalCV += cv, totalEarned += earned
+      const parts = (t.wbs_code||'').split('.')
+      const parentWbs = parts.length > 1 ? parts.slice(0,-1).join('.') : ''
+      const hasChildren = tasks.some(c =>
+        c.wbs_code && t.wbs_code &&
+        c.wbs_code.startsWith(t.wbs_code+'.') &&
+        c.wbs_code.split('.').length === t.wbs_code.split('.').length+1
+      )
+      const bgColor = t.outline_level===1 ? '#1A2B4A'
+                    : t.outline_level===2 ? '#2563EB'
+                    : t.outline_level===3 ? '#EEF2FF'
+                    : t.outline_level===4 ? '#F8FAFC' : 'white'
+      const txtColor = t.outline_level<=2 ? 'white'
+                     : t.outline_level===3 ? '#1E40AF' : 'var(--gray7)'
+      const pctColor = pct===100?'#16A34A':pct>50?'#2563EB':pct>0?'#D97706':'#CBD5E1'
 
-    // Tìm wbs cha trực tiếp
-    const parts = (t.wbs_code||'').split('.')
-    const parentWbs = parts.length > 1 ? parts.slice(0,-1).join('.') : ''
+      return `<div data-level="${t.outline_level}"
+          data-wbs="${t.wbs_code||''}"
+          data-parent-wbs="${parentWbs}"
+          style="background:${bgColor};border-bottom:0.5px solid rgba(0,0,0,.1);
+            padding:8px 10px;padding-left:${10+indent}px;
+            cursor:${hasChildren?'pointer':'default'}"
+          ${hasChildren ? `onclick="slToggleRowMob('${t.wbs_code}')"` : ''}>
+        <!-- Dòng 1: tên + % -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${cv>0?4:0}px">
+          <span style="font-size:${t.outline_level<=2?13:12}px;font-weight:${t.outline_level<=3?600:400};
+            color:${txtColor};flex:1;min-width:0;word-break:break-word;line-height:1.4">
+            ${hasChildren ? '<span class="sl-arrow" style="margin-right:4px;font-size:10px">▼</span>' : ''}
+            ${t.name}
+          </span>
+          ${cv>0 ? `<span style="font-size:13px;font-weight:700;color:${pctColor};margin-left:8px;flex-shrink:0">${pct}%</span>` : ''}
+        </div>
+        ${cv>0 ? `
+        <!-- Dòng 2: bar -->
+        <div style="height:5px;background:rgba(255,255,255,.2);border-radius:3px;margin-bottom:4px">
+          <div style="width:${pct}%;height:100%;background:${pctColor};border-radius:3px"></div>
+        </div>
+        <!-- Dòng 3: giá trị -->
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;color:${t.outline_level<=2?'#93C5FD':'var(--gray5)'}">
+            HĐ: ${fmtMshort(cv)}
+          </span>
+          <span style="font-size:11px;font-weight:600;color:${t.outline_level<=2?'#6EE7B7':'var(--teal)'}">
+            TH: ${fmtMshort(earned)}
+          </span>
+        </div>` : ''}
+      </div>`
+    }).join('')
 
-    // Màu nền theo level
-    const bgColor = t.outline_level===1 ? '#1A2B4A'
-                  : t.outline_level===2 ? '#2563EB'
-                  : t.outline_level===3 ? '#EEF2FF'
-                  : t.outline_level===4 ? '#F8FAFC'
-                  : 'white'
-    const txtColor = t.outline_level<=2 ? 'white'
-                   : t.outline_level===3 ? '#1E40AF'
-                   : 'var(--gray7)'
+    wrap.innerHTML = `<div id="sl-mob-list">${rows}</div>`
 
-    const hasChildren = tasks.some(c =>
-      c.wbs_code && t.wbs_code &&
-      c.wbs_code.startsWith(t.wbs_code+'.') &&
-      c.wbs_code.split('.').length === t.wbs_code.split('.').length+1
-    )
+  } else {
+    // ── DESKTOP: table đầy đủ ────────────────────────────────
+    const rows = tasks.map(t => {
+      const cv     = t._contractValue || 0
+      const earned = t._earnedValue   || 0
+      const pct    = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
+      const indent = (t.outline_level - 1) * 16
+      if (!t.is_summary) { totalCV += cv; totalEarned += earned }
 
-    // % bar
-    const pctColor = pct===100?'var(--green)':pct>50?'var(--blue)':pct>0?'var(--amber)':'var(--gray3)'
-    const pctBar = `<div style="height:4px;background:var(--gray2);border-radius:2px;margin-bottom:2px;width:100%">
-      <div style="width:${pct}%;height:100%;background:${pctColor};border-radius:2px"></div></div>
-      <span style="font-size:10px;font-weight:700;color:${pctColor}">${pct}%</span>`
+      const parts = (t.wbs_code||'').split('.')
+      const parentWbs = parts.length > 1 ? parts.slice(0,-1).join('.') : ''
+      const hasChildren = tasks.some(c =>
+        c.wbs_code && t.wbs_code &&
+        c.wbs_code.startsWith(t.wbs_code+'.') &&
+        c.wbs_code.split('.').length === t.wbs_code.split('.').length+1
+      )
+      const bgColor = t.outline_level===1 ? '#1A2B4A'
+                    : t.outline_level===2 ? '#2563EB'
+                    : t.outline_level===3 ? '#EEF2FF'
+                    : t.outline_level===4 ? '#F8FAFC' : 'white'
+      const txtColor = t.outline_level<=2 ? 'white'
+                     : t.outline_level===3 ? '#1E40AF' : 'var(--gray7)'
+      const pctColor = pct===100?'var(--green)':pct>50?'var(--blue)':pct>0?'var(--amber)':'var(--gray3)'
+      const pctBar = `<div style="height:4px;background:var(--gray2);border-radius:2px;margin-bottom:2px">
+        <div style="width:${pct}%;height:100%;background:${pctColor};border-radius:2px"></div></div>
+        <span style="font-size:10px;font-weight:600;color:${pctColor}">${pct}%</span>`
 
-    return `<tr data-level="${t.outline_level}"
-        data-wbs="${t.wbs_code||''}"
-        data-parent-wbs="${parentWbs}"
-        style="background:${bgColor};border-bottom:0.5px solid rgba(0,0,0,.08);cursor:${hasChildren?'pointer':'default'}"
-        ${hasChildren ? `onclick="slToggleRow('${t.wbs_code}',${t.outline_level})"` : ''}>
-      <td style="padding:7px 8px;padding-left:${12+indent}px;font-size:${t.outline_level<=2?12:11}px;
-        font-weight:${t.outline_level<=3?600:400};color:${txtColor};min-width:180px">
-        ${hasChildren ? `<span class="sl-arrow" style="margin-right:4px;font-size:10px">▼</span>` : '<span style="margin-right:12px"></span>'}
-        ${t.name}
-      </td>
-      ${mob?'':('<td style="padding:7px 8px;text-align:center;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':t.unit||'%')+'</td>')}
-      ${mob?'':('<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':fmtN(t.planned_quantity))+'</td>')}
-      ${mob?'':('<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':fmtN(t.actual_quantity))+'</td>')}
-      ${mob?'':('<td style="padding:7px 8px;text-align:right;font-size:11px;color:'+txtColor+';opacity:.8">'+(t.is_summary?'':fmtM(t.unit_price))+'</td>')}
-      <td style="padding:7px 6px;text-align:right;font-size:11px;font-weight:500;white-space:nowrap;color:${t.outline_level<=2?'#93C5FD':cv>0?'var(--navy)':'var(--gray3)'}">
-        ${fmtM(cv)}
-      </td>
-      <td style="padding:7px 6px;text-align:right;font-size:11px;font-weight:600;white-space:nowrap;color:${t.outline_level<=2?'#6EE7B7':earned>0?'var(--teal)':'var(--gray3)'}">
-        ${cv>0 ? fmtM(earned) : '—'}
-      </td>
-      <td style="padding:7px 4px;text-align:center;width:52px">
-        ${cv>0 ? pctBar : ''}
-      </td>
-    </tr>`
-  }).join('')
+      return `<tr data-level="${t.outline_level}"
+          data-wbs="${t.wbs_code||''}"
+          data-parent-wbs="${parentWbs}"
+          style="background:${bgColor};border-bottom:0.5px solid rgba(0,0,0,.08);cursor:${hasChildren?'pointer':'default'}"
+          ${hasChildren ? `onclick="slToggleRow('${t.wbs_code}',${t.outline_level})"` : ''}>
+        <td style="padding:7px 8px;padding-left:${12+indent}px;font-size:${t.outline_level<=2?12:11}px;
+          font-weight:${t.outline_level<=3?600:400};color:${txtColor};min-width:180px">
+          ${hasChildren ? '<span class="sl-arrow" style="margin-right:4px;font-size:10px">▼</span>' : '<span style="margin-right:12px"></span>'}
+          ${t.name}
+        </td>
+        <td style="padding:7px 8px;text-align:center;font-size:11px;color:${txtColor};opacity:.8">${t.is_summary?'':t.unit||'%'}</td>
+        <td style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">${t.is_summary?'':fmtN(t.planned_quantity)}</td>
+        <td style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">${t.is_summary?'':fmtN(t.actual_quantity)}</td>
+        <td style="padding:7px 8px;text-align:right;font-size:11px;color:${txtColor};opacity:.8">${t.is_summary?'':fmtM(t.unit_price)}</td>
+        <td style="padding:7px 8px;text-align:right;font-size:11px;font-weight:500;color:${t.outline_level<=2?'#93C5FD':cv>0?'var(--navy)':'var(--gray3)'}">${fmtM(cv)}</td>
+        <td style="padding:7px 8px;text-align:right;font-size:11px;font-weight:600;color:${t.outline_level<=2?'#6EE7B7':earned>0?'var(--teal)':'var(--gray3)'}">${cv>0?fmtM(earned):'—'}</td>
+        <td style="padding:7px 6px;text-align:center;width:72px">${cv>0?pctBar:''}</td>
+      </tr>`
+    }).join('')
 
-  tbody.innerHTML = rows
+    wrap.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--navy);color:white;font-size:11px;position:sticky;top:0;z-index:5">
+        <th style="padding:9px 12px;text-align:left;min-width:220px">Hạng mục / Công tác</th>
+        <th style="padding:9px 8px;text-align:center;width:60px">Đơn vị</th>
+        <th style="padding:9px 8px;text-align:right;width:80px">KL KH</th>
+        <th style="padding:9px 8px;text-align:right;width:80px">KL TH</th>
+        <th style="padding:9px 8px;text-align:right;width:110px">Đơn giá (₫)</th>
+        <th style="padding:9px 8px;text-align:right;width:130px">Giá trị HĐ (₫)</th>
+        <th style="padding:9px 8px;text-align:right;width:130px">Sản lượng TH (₫)</th>
+        <th style="padding:9px 8px;text-align:center;width:72px">% Đạt</th>
+      </tr></thead>
+      <tbody id="sl-tbody">${rows}</tbody>
+    </table></div>`
+  }
 
   // Footer totals
   const rootCV = STATE.tasks.find(t=>t.outline_level===1)?._contractValue || totalCV
