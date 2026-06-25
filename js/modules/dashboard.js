@@ -133,7 +133,7 @@ async function loadDashboard() {
         align-items:center;justify-content:center;
         border-left:1px solid var(--gray2);padding:8px 6px;
         background:${rowBg}">
-        <span style="font-size:18px;font-weight:800;color:#0D9488;line-height:1.2">${fmtShort(ev)}</span>
+        <span style="font-size:18px;font-weight:800;color:${barColor};line-height:1.2">${fmtShort(ev)}</span>
         <span style="font-size:9px;color:var(--gray3);margin:2px 0">─────</span>
         <span style="font-size:13px;font-weight:500;color:#1A2B4A;line-height:1.2">${fmtShort(cv)}</span>
       </div>` : ''}
