@@ -244,117 +244,169 @@ async function loadSanLuongChart(proj, nWeeks) {
   const weeks = Object.keys(weekMap).sort()
   const leafTasks = STATE.tasks.filter(t => !t.is_summary && (t.unit_price||0) > 0)
 
-  // Tính earned value lũy kế tại mỗi tuần
-  const weekLabels = []
-  const weeklyDelta = []
-  const weeklyLuyKe = []
+  // Helper: ISO week+year → Monday date
+  function weekToDate(wk, yr) {
+    const jan4 = new Date(yr, 0, 4)
+    const dow = jan4.getDay() || 7
+    const mon = new Date(jan4)
+    mon.setDate(jan4.getDate() - dow + 1 + (wk-1)*7)
+    return mon
+  }
+  function parseISO(s) {
+    if (!s) return null
+    const [y,m,d] = s.split('-').map(Number)
+    return new Date(y, m-1, d)
+  }
 
-  let prevLuyKe = 0
+  // PV lũy kế tại tuần T — tuyến tính theo thời gian
+  function getPVatWeek(wk, yr) {
+    const weekEnd = weekToDate(wk, yr)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+    return leafTasks.reduce((s, t) => {
+      const cv = (t.unit_price||0) * (t.planned_quantity||1)
+      if (!cv) return s
+      const start  = parseISO(t.kh_start)
+      const finish = parseISO(t.kh_finish)
+      if (!start || !finish) return s
+      if (weekEnd < start)   return s
+      if (weekEnd >= finish)  return s + cv
+      const ratio = Math.min(1, Math.max(0, (weekEnd - start)/(finish - start)))
+      return s + cv * ratio
+    }, 0)
+  }
+
+  // Tính EV và PV lũy kế tại mỗi tuần
+  const weekLabels  = []
+  const weeklyDelta = []
+  const weeklyEV    = []
+  const weeklyPV    = []
+
+  let prevEV = 0
   weeks.forEach(wKey => {
     const { week, year } = weekMap[wKey]
-    weekLabels.push(`T${week}/${year}`)
-
-    const luyKe = leafTasks.reduce((s, t) => {
+    weekLabels.push('T' + week)
+    const ev = leafTasks.reduce((s, t) => {
       const pct = getPctAtWeek(t.id, week, year)
-      const cv = (t.unit_price||0) * (t.planned_quantity||1)
+      const cv  = (t.unit_price||0) * (t.planned_quantity||1)
       return s + cv * pct / 100
     }, 0)
-
-    weeklyDelta.push(Math.max(0, luyKe - prevLuyKe))
-    weeklyLuyKe.push(luyKe)
-    prevLuyKe = luyKe
+    weeklyDelta.push(Math.max(0, ev - prevEV))
+    weeklyEV.push(ev)
+    weeklyPV.push(getPVatWeek(week, year))
+    prevEV = ev
   })
 
-  // Tổng giá trị HĐ
   const totalCV = STATE.tasks
     .filter(t => t.outline_level === 1)
     .reduce((s,t) => s + (t._contractValue||0), 0)
 
-  renderSanLuongChart(chartEl, weekLabels, weeklyDelta, weeklyLuyKe, totalCV)
+  renderSanLuongChart(chartEl, weekLabels, weeklyDelta, weeklyEV, weeklyPV, totalCV)
 }
 
-function renderSanLuongChart(el, labels, deltas, luyKe, totalCV) {
-  const W = 800, H = 260, PAD_L = 80, PAD_R = 20, PAD_T = 30, PAD_B = 40
+function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
+  const W = 800, H = 280, PAD_L = 80, PAD_R = 24, PAD_T = 30, PAD_B = 40
   const chartW = W - PAD_L - PAD_R
   const chartH = H - PAD_T - PAD_B
   const n = labels.length
   if (!n) { el.innerHTML = '<div style="color:var(--gray4);padding:20px;text-align:center">Không có dữ liệu</div>'; return }
 
-  const maxVal = Math.max(...luyKe, 1)
-  const barW = Math.max(8, Math.floor(chartW / n) - 6)
+  const maxVal = Math.max(...ev, ...pv, totalCV, 1)
+  const barW   = Math.max(6, Math.floor(chartW / n) - 6)
+  const isMob  = typeof window !== 'undefined' && window.innerWidth < 1024
 
   const fmtB = v => {
+    if (!v) return '0'
     if (v >= 1e9) return (v/1e9).toFixed(1)+'tỷ'
-    if (v >= 1e6) return (v/1e6).toFixed(0)+'tr'
-    return Math.round(v).toLocaleString()
+    if (v >= 1e6) return Math.round(v/1e6)+'tr'
+    return Math.round(v/1e3)+'k'
   }
 
-  // Bars
-  const isMobChart = typeof window !== 'undefined' && window.innerWidth < 1024
+  const xC = i => PAD_L + i*(chartW/n) + chartW/(n*2)
+  const yC = v => PAD_T + chartH - Math.round(v/maxVal*chartH)
+
+  // Bars EV tuần
   const bars = deltas.map((d, i) => {
-    const x = PAD_L + i * (chartW / n) + (chartW/n - barW)/2
-    const h = Math.max(2, Math.round(d / maxVal * chartH))
+    const x = PAD_L + i*(chartW/n) + (chartW/n - barW)/2
+    const h = Math.max(2, Math.round(d/maxVal*chartH))
     const y = PAD_T + chartH - h
-    const lblSize = isMobChart ? 10 : 8
-    return `<g>
-      <title>Tuần ${labels[i]}: ${fmtB(d)}</title>
-      <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.85"/>
-      <text x="${x+barW/2}" y="${y-5}" text-anchor="middle" font-size="${lblSize}" fill="#1D4ED8" font-weight="600">${d>0?fmtB(d):''}</text>
+    return `<g><title>${labels[i]}: ${fmtB(d)}</title>
+      <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.75"/>
+      ${d>0?`<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="${isMob?10:8}" fill="#1D4ED8" font-weight="600">${fmtB(d)}</text>`:''}
     </g>`
   }).join('')
 
-  // Line lũy kế
-  const linePoints = luyKe.map((v, i) => {
-    const x = PAD_L + i * (chartW / n) + chartW/(n*2)
-    const y = PAD_T + chartH - Math.round(v / maxVal * chartH)
-    return `${x},${y}`
-  }).join(' ')
+  // Line EV lũy kế (cam)
+  const evPoints = ev.map((v,i) => `${xC(i)},${yC(v)}`).join(' ')
+  const evDots = ev.map((v,i) => {
+    const isLast = i===n-1
+    return `<g>
+      <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?4:3}" fill="#D97706"/>
+      ${isLast?`<text x="${xC(i)}" y="${yC(v)-9}" text-anchor="middle" font-size="${isMob?10:9}" fill="#D97706" font-weight="700">${fmtB(v)}</text>`:''}
+    </g>`
+  }).join('')
 
-  // Đường HĐ
-  const hdY = totalCV > 0 ? PAD_T + chartH - Math.round(totalCV / maxVal * chartH) : -1
+  // Line PV lũy kế (xanh lá nét đứt)
+  const pvPoints = pv.map((v,i) => `${xC(i)},${yC(v)}`).join(' ')
+  const pvDots = pv.map((v,i) => {
+    const isLast = i===n-1
+    return `<g>
+      <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?4:2}" fill="#16A34A" opacity="0.8"/>
+      ${isLast?`<text x="${xC(i)+6}" y="${yC(v)}" text-anchor="start" font-size="${isMob?10:9}" fill="#16A34A" font-weight="700">${fmtB(v)}</text>`:''}
+    </g>`
+  }).join('')
+
+  // Đường HĐ tổng
+  const hdY = totalCV > 0 ? yC(totalCV) : -1
+
+  // Y ticks
+  const yTicks = [0,0.25,0.5,0.75,1].map(r => {
+    const y = PAD_T + chartH - r*chartH
+    return `<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="var(--gray2)" stroke-width="0.5"/>
+      <text x="${PAD_L-5}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--gray4)">${fmtB(r*maxVal)}</text>`
+  }).join('')
 
   // X labels
-  const xLblSize = (typeof window !== 'undefined' && window.innerWidth < 1024) ? 11 : 9
-  const xLabels = labels.map((lbl, i) => {
-    const x = PAD_L + i * (chartW / n) + chartW/(n*2)
-    const short = lbl.replace('/'+new Date().getFullYear(),'')
-    return `<text x="${x}" y="${H-6}" text-anchor="middle" font-size="${xLblSize}" fill="var(--gray5)" font-weight="500">${short}</text>`
-  }).join('')
+  const xLabels = labels.map((lbl,i) =>
+    `<text x="${xC(i)}" y="${H-6}" text-anchor="middle" font-size="${isMob?11:9}" fill="var(--gray5)">${lbl}</text>`
+  ).join('')
 
-  // Y axis
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(r => {
-    const y = PAD_T + chartH - r * chartH
-    const val = r * maxVal
-    return `
-      <line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="var(--gray2)" stroke-width="0.5"/>
-      <text x="${PAD_L-6}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--gray4)">${fmtB(val)}</text>`
-  }).join('')
-
-  const lastLuyKe = luyKe[luyKe.length-1] || 0
-  const pctDat = totalCV > 0 ? Math.round(lastLuyKe/totalCV*100) : 0
+  // SPI = EV / PV tại tuần cuối
+  const lastEV = ev[n-1]||0
+  const lastPV = pv[n-1]||0
+  const spi = lastPV > 0 ? (lastEV/lastPV).toFixed(2) : null
+  const spiColor = !spi ? '#64748B' : parseFloat(spi)>=1 ? '#16A34A' : parseFloat(spi)>=0.8 ? '#D97706' : '#DC2626'
+  const pctDat = totalCV > 0 ? Math.round(lastEV/totalCV*100) : 0
 
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--gray5);margin-bottom:8px;display:flex;gap:16px;flex-wrap:wrap">
-      <span>Lũy kế hiện tại: <strong style="color:var(--teal)">${fmtB(lastLuyKe)}</strong></span>
-      <span>Giá trị HĐ: <strong style="color:var(--navy)">${fmtB(totalCV)}</strong></span>
-      <span>Đạt: <strong style="color:${pctDat>=80?'var(--green)':pctDat>=50?'var(--amber)':'var(--red)'}">${pctDat}%</strong></span>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px;margin-bottom:10px;align-items:center">
+      <span style="display:flex;align-items:center;gap:5px">
+        <span style="width:12px;height:10px;background:#2563EB;border-radius:2px;opacity:.75;display:inline-block"></span>
+        <span style="color:var(--gray5)">SL tuần (EV)</span>
+      </span>
+      <span style="display:flex;align-items:center;gap:5px">
+        <span style="width:20px;height:2px;background:#D97706;display:inline-block"></span>
+        <span style="color:var(--gray5)">Lũy kế TH (EV): <strong style="color:#D97706">${fmtB(lastEV)}</strong></span>
+      </span>
+      <span style="display:flex;align-items:center;gap:5px">
+        <span style="width:20px;height:2px;background:#16A34A;display:inline-block;border-top:2px dashed #16A34A;margin-top:2px"></span>
+        <span style="color:var(--gray5)">Kế hoạch (PV): <strong style="color:#16A34A">${fmtB(lastPV)}</strong></span>
+      </span>
+      ${spi ? `<span style="padding:3px 10px;border-radius:20px;background:${spiColor}18;color:${spiColor};font-weight:700;font-size:12px">
+        SPI = ${spi} ${parseFloat(spi)>=1?'✅':parseFloat(spi)>=0.8?'⚠️':'🔴'}
+      </span>` : ''}
+      <span style="color:var(--gray4)">HĐ: <strong style="color:var(--navy)">${fmtB(totalCV)}</strong></span>
+      <span style="color:var(--gray4)">Đạt: <strong style="color:${pctDat>=80?'var(--green)':pctDat>=50?'var(--amber)':'var(--red)'}">${pctDat}%</strong></span>
     </div>
     <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
       ${yTicks}
       <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+chartH}" stroke="var(--gray3)" stroke-width="1"/>
-      ${hdY > 0 ? `<line x1="${PAD_L}" y1="${hdY}" x2="${W-PAD_R}" y2="${hdY}" stroke="var(--red)" stroke-width="1" stroke-dasharray="6 3" opacity="0.6"/>
-      <text x="${W-PAD_R+2}" y="${hdY+3}" font-size="8" fill="var(--red)" opacity="0.8">HĐ</text>` : ''}
+      ${hdY>0?`<line x1="${PAD_L}" y1="${hdY}" x2="${W-PAD_R}" y2="${hdY}" stroke="#DC2626" stroke-width="1" stroke-dasharray="6 3" opacity="0.4"/>
+        <text x="${W-PAD_R+2}" y="${hdY+3}" font-size="8" fill="#DC2626" opacity="0.7">HĐ</text>`:''}
       ${bars}
-      <polyline points="${linePoints}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
-      ${luyKe.map((v,i) => {
-        const x = PAD_L + i*(chartW/n) + chartW/(n*2)
-        const y = PAD_T + chartH - Math.round(v/maxVal*chartH)
-        const lblSize = (typeof window !== 'undefined' && window.innerWidth < 1024) ? 10 : 8
-        return `<g>
-          <circle cx="${x}" cy="${y}" r="4" fill="#D97706"/>
-          <text x="${x}" y="${y-8}" text-anchor="middle" font-size="${lblSize}" fill="#D97706" font-weight="700">${fmtB(v)}</text>
-        </g>`
-      }).join('')}
+      <polyline points="${pvPoints}" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="6 3" opacity="0.8"/>
+      ${pvDots}
+      <polyline points="${evPoints}" fill="none" stroke="#D97706" stroke-width="2.5" stroke-linejoin="round"/>
+      ${evDots}
       ${xLabels}
     </svg>`
 }
