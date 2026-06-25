@@ -1,3 +1,200 @@
+// ═══════════════════════════════════════════════════════════
+// EXPORT WEEKLY REPORT (text-based)
+// ═══════════════════════════════════════════════════════════
+async function exportWeeklyReport() {
+  const proj = STATE.currentProject
+  if (!proj) { toast('Chưa có dự án', 'error'); return }
+
+  const week = getISOWeek(new Date())
+  const year = new Date().getFullYear()
+
+  loading(true, 'Đang tải dữ liệu báo cáo...')
+  const { data: aiData } = await sb.from('ai_summaries')
+    .select('*').eq('project_id', proj.id)
+    .eq('week_number', week).eq('year', year)
+    .order('created_at', { ascending: false }).limit(1)
+  const aiSummary = aiData?.[0]?.summary_text || null
+
+  const { data: weekPhotos } = await sb.from('task_photos')
+    .select('photo_url,caption,taken_at,task_id,tasks(name)')
+    .eq('project_id', proj.id)
+    .eq('week_number', week).eq('year', year)
+    .order('taken_at', { ascending: false })
+    .limit(9)
+  loading(false)
+
+  // Mở editor để review trước khi xuất PDF
+  openReportEditor(aiSummary, weekPhotos, week, year)
+}
+
+// ── Editor review báo cáo trước khi xuất PDF ─────────────
+function openReportEditor(aiSummary, weekPhotos, week, year) {
+  const proj = STATE.currentProject
+  const photoCount = weekPhotos?.length || 0
+
+  openModal(`📋 Review báo cáo tuần ${week}/${year}`, `
+    <div style="min-height:60vh">
+      <div style="background:var(--lblue);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;
+        display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--blue)">
+            ${proj.code} — Tuần ${week}/${year}
+          </div>
+          <div style="font-size:11px;color:var(--gray5);margin-top:2px">
+            ${photoCount} ảnh · Có Gantt chart · Có biểu đồ quân số
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${!aiSummary ? `<span style="font-size:11px;color:var(--amber);background:#FEF3C7;padding:4px 10px;border-radius:6px">
+            ⚠️ Chưa có AI tóm tắt — nội dung sẽ trống
+          </span>` : `<span style="font-size:11px;color:var(--green);background:#DCFCE7;padding:4px 10px;border-radius:6px">
+            ✅ Đã có AI tóm tắt tuần này
+          </span>`}
+        </div>
+      </div>
+
+      <!-- Editor nội dung AI -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:6px;
+          display:flex;justify-content:space-between;align-items:center">
+          <span>✏️ Nội dung phân tích AI (có thể chỉnh sửa trước khi xuất)</span>
+          <button onclick="resetReportContent()" class="btn btn-secondary btn-sm" style="font-size:11px">
+            ↩ Reset về AI gốc
+          </button>
+        </div>
+        <textarea id="report-ai-content"
+          style="width:100%;height:340px;padding:12px;font-size:13px;line-height:1.7;
+            border:1px solid var(--gray3);border-radius:var(--radius);resize:vertical;
+            font-family:'Segoe UI',sans-serif;color:var(--gray8)"
+          placeholder="Chưa có nội dung AI. Bấm 'AI Tóm tắt tiến độ' trước để tạo nội dung."
+          spellcheck="false">${aiSummary || ''}</textarea>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <span style="font-size:11px;color:var(--gray4)">
+            Chỉnh sửa trực tiếp trong ô này — thay đổi sẽ được xuất vào PDF
+          </span>
+          <span id="report-char-count" style="font-size:11px;color:var(--gray4)">
+            ${(aiSummary||'').length} ký tự
+          </span>
+        </div>
+      </div>
+
+      <!-- Ghi chú thêm của KTTC -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:6px">
+          📝 Ghi chú thêm của KTTC (tuỳ chọn — xuất hiện cuối báo cáo)
+        </div>
+        <textarea id="report-kttc-note"
+          style="width:100%;height:72px;padding:10px 12px;font-size:13px;
+            border:1px solid var(--gray3);border-radius:var(--radius);resize:vertical;
+            font-family:'Segoe UI',sans-serif;color:var(--gray8)"
+          placeholder="VD: Tuần tới ưu tiên đẩy LK1, họp CĐT ngày 15/6 về phát sinh..."></textarea>
+      </div>
+
+      <!-- Ảnh đính kèm báo cáo -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:8px;
+          display:flex;justify-content:space-between;align-items:center">
+          <span>📎 Ảnh đính kèm báo cáo (cảnh báo / tham khảo công tác sắp tới)</span>
+          <span style="font-size:11px;color:var(--gray4);font-weight:400">Tối đa 6 ảnh · Xuất thành section riêng trong PDF</span>
+        </div>
+
+        <!-- 2 nguồn ảnh -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="openReportPhotoLibrary()"
+            style="font-size:12px">
+            🖼️ Chọn từ thư viện tuần này
+          </button>
+          <label class="btn btn-secondary btn-sm" style="cursor:pointer;font-size:12px;margin:0">
+            ⬆️ Upload ảnh mới
+            <input type="file" id="report-photo-upload" accept="image/*" multiple
+              style="display:none" onchange="handleReportPhotoUpload(this)">
+          </label>
+        </div>
+
+        <!-- Grid ảnh đã chọn -->
+        <div id="report-photo-grid"
+          style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;min-height:40px">
+          <div style="grid-column:1/-1;text-align:center;color:var(--gray4);font-size:12px;
+            padding:16px;border:1px dashed var(--gray3);border-radius:var(--radius)">
+            Chưa có ảnh đính kèm — chọn từ thư viện hoặc upload mới
+          </div>
+        </div>
+
+        <!-- Modal chọn từ thư viện -->
+        <div id="report-library-modal" style="display:none;position:fixed;inset:0;
+          background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center;padding:20px">
+          <div style="background:white;border-radius:12px;width:100%;max-width:640px;
+            max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--gray2);
+              display:flex;justify-content:space-between;align-items:center">
+              <h3 style="font-size:15px;font-weight:600">🖼️ Chọn ảnh từ thư viện tuần này</h3>
+              <button onclick="document.getElementById('report-library-modal').style.display='none'"
+                style="background:none;border:none;font-size:20px;color:var(--gray4);cursor:pointer">✕</button>
+            </div>
+            <div id="report-library-grid"
+              style="padding:16px;overflow-y:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              <div style="grid-column:1/-1;text-align:center;color:var(--gray4);padding:20px">
+                Đang tải ảnh...
+              </div>
+            </div>
+            <div style="padding:12px 20px;border-top:1px solid var(--gray2);text-align:right">
+              <button class="btn btn-secondary btn-sm"
+                onclick="document.getElementById('report-library-modal').style.display='none'">
+                Xong
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `, `
+    <div style="display:flex;align-items:center;gap:8px;width:100%;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--gray5)">
+          PDF: AI · <span id="report-photo-count-label">Ảnh thi công (${photoCount})</span> · Tiến độ · Gantt · Quân số
+        </span>
+        <button class="btn btn-secondary btn-sm" onclick="openPhotoSelector()"
+          style="font-size:11px;white-space:nowrap">
+          🖼️ Chọn & sắp xếp ảnh thi công
+        </button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" onclick="renderWeeklyPDF()">
+          📄 Xuất PDF
+        </button>
+      </div>
+    </div>
+  `)
+
+  // Reset mỗi lần mở editor mới
+  window._reportAttachments = []
+  window._selectedPhotos    = null  // null = dùng auto (9 mới nhất)
+
+  // Lưu dữ liệu vào STATE để renderWeeklyPDF dùng
+  STATE._reportData = { aiSummary, weekPhotos, week, year }
+
+  // Modal lớn hơn
+  const m = document.querySelector('.modal')
+  m.style.maxWidth = '700px'
+  m.style.maxHeight = '92vh'
+
+  // Đếm ký tự realtime
+  document.getElementById('report-ai-content').addEventListener('input', function() {
+    const el = document.getElementById('report-char-count')
+    if (el) el.textContent = this.value.length + ' ký tự'
+  })
+}
+
+function resetReportContent() {
+  const ta = document.getElementById('report-ai-content')
+  if (!ta || !STATE._reportData) return
+  ta.value = STATE._reportData.aiSummary || ''
+  const el = document.getElementById('report-char-count')
+  if (el) el.textContent = ta.value.length + ' ký tự'
+  toast('Đã reset về nội dung AI gốc', '')
+}
+
 async function renderWeeklyPDF() {
   const ta       = document.getElementById('report-ai-content')
   const noteEl   = document.getElementById('report-kttc-note')
@@ -134,3 +331,371 @@ async function renderWeeklyPDF() {
     pdf.save(fn);toast('Đã xuất PDF: '+fn,'success')
   } catch(e){toast('Lỗi xuất PDF: '+e.message,'error');console.error(e)} finally{loading(false)}
 }
+
+// ═══════════════════════════════════════════════════════════
+// LỊCH SỬ PROGRESS — xem, sửa, xóa
+// ═══════════════════════════════════════════════════════════
+async function showProgressHistory(taskId) {
+  const task = STATE.tasks.find(t => t.id === taskId)
+  if (!task) return
+
+  loading(true, 'Đang tải lịch sử...')
+  const { data: history, error } = await sb.from('task_progress')
+    .select('*')
+    .eq('task_id', taskId)
+    .order('updated_at', { ascending: false })
+  loading(false)
+
+  if (error) { toast('Lỗi tải lịch sử: ' + error.message, 'error'); return }
+
+  const isAdmin = ['admin','planner'].includes(STATE.role)
+
+  const rows = history?.length ? history.map(h => `
+    <tr>
+      <td style="font-size:15px;color:var(--gray5)">${new Date(h.updated_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+      <td style="text-align:center;font-weight:600;color:var(--blue)">${h.actual_quantity != null ? h.actual_quantity + ' ' + (h.unit||'') : h.pct_complete + '%'}</td>
+      <td style="text-align:center">${h.pct_complete}%</td>
+      <td style="font-size:15px">${h.note||'—'}</td>
+      <td style="font-size:15px;color:var(--gray4)">${h.updated_by?.split('@')[0]||'—'}</td>
+      <td style="text-align:center">
+        <button class="btn btn-secondary btn-sm" onclick="editProgress('${h.id}','${taskId}',${h.pct_complete},'${h.note||''}',${h.actual_quantity||'null'})">✏️</button>
+        ${isAdmin ? `<button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteProgress('${h.id}','${taskId}')">🗑️</button>` : ''}
+      </td>
+    </tr>`) .join('')
+  : '<tr><td colspan="6" style="text-align:center;color:var(--gray4);padding:20px">Chưa có lịch sử cập nhật</td></tr>'
+
+  openModal(`📋 Lịch sử: ${task.name}`,`
+    <div style="font-size:16px;color:var(--gray5);margin-bottom:12px">
+      KH: ${fmtDate(task.kh_start)} → ${fmtDate(task.kh_finish)} · Đơn vị: ${task.unit||'%'} · KH: ${task.planned_quantity||'—'}
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl" style="min-width:500px">
+        <thead><tr>
+          <th>Thời gian</th><th style="text-align:center">KL thực tế</th>
+          <th style="text-align:center">%</th><th>Ghi chú</th>
+          <th>Người nhập</th><th style="text-align:center">Thao tác</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--gray2)">
+      <div style="font-size:16px;font-weight:600;color:var(--gray7);margin-bottom:8px">➕ Nhập tay override</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div class="form-label">% hoặc số lượng</div>
+          <input type="number" id="manual-pct" min="0" max="100" placeholder="${task.unit !== '%' ? 'Số lượng' : '%'}"
+            style="width:90px;padding:6px 8px;border:1px solid var(--gray3);border-radius:6px;font-size:14px;font-weight:600">
+        </div>
+        <div>
+          <div class="form-label">Ghi chú</div>
+          <input type="text" id="manual-note" placeholder="Lý do nhập tay..."
+            style="width:200px;padding:6px 8px;border:1px solid var(--gray3);border-radius:6px;font-size:13px">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveManualProgress('${taskId}')">💾 Lưu ngay</button>
+      </div>
+    </div>
+  `,`<button class="btn btn-secondary" onclick="closeModal()">Đóng</button>`)
+}
+
+async function editProgress(progressId, taskId, curPct, curNote, curQty) {
+  const newPct = prompt(`Sửa % hoàn thành (hiện tại: ${curPct}%):`, curPct)
+  if (newPct === null) return
+  const newNote = prompt('Sửa ghi chú:', curNote)
+  if (newNote === null) return
+
+  loading(true, 'Đang lưu...')
+  const { error } = await sb.from('task_progress')
+    .update({ pct_complete: parseInt(newPct), note: newNote, updated_at: new Date().toISOString() })
+    .eq('id', progressId)
+  loading(false)
+
+  if (error) { toast('Lỗi: ' + error.message, 'error'); return }
+  toast('Đã cập nhật!', 'success')
+  await loadProjectData(STATE.currentProject.id)
+  showProgressHistory(taskId)
+}
+
+async function deleteProgress(progressId, taskId) {
+  if (!confirm('Xóa bản ghi này? Thao tác không thể hoàn tác.')) return
+
+  loading(true, 'Đang xóa...')
+  const { error } = await sb.from('task_progress').delete().eq('id', progressId)
+  loading(false)
+
+  if (error) { toast('Lỗi xóa: ' + error.message, 'error'); return }
+  toast('Đã xóa bản ghi!', 'success')
+  await loadProjectData(STATE.currentProject.id)
+  showProgressHistory(taskId)
+}
+
+async function saveManualProgress(taskId) {
+  const task = STATE.tasks.find(t => t.id === taskId)
+  const rawVal = parseFloat(document.getElementById('manual-pct').value)
+  const note = document.getElementById('manual-note').value.trim() || 'Nhập tay'
+  if (isNaN(rawVal)) { toast('Vui lòng nhập giá trị', 'error'); return }
+
+  const now = new Date()
+  const today = now.toISOString().slice(0,10)
+  let pct, actualQty = null
+
+  if (task.unit && task.unit !== '%' && task.planned_quantity) {
+    actualQty = rawVal
+    pct = Math.min(100, Math.round(rawVal / task.planned_quantity * 100))
+  } else {
+    pct = Math.min(100, Math.max(0, Math.round(rawVal)))
+  }
+
+  const ttStart = (task.tt_start && task.tt_start !== '') ? task.tt_start : (pct > 0 ? today : null)
+  const ttEnd = pct === 100 ? today : null
+
+  loading(true, 'Đang lưu...')
+  const { error } = await sb.from('task_progress').insert({
+    task_id: taskId, project_id: STATE.currentProject.id,
+    tt_start: ttStart, tt_finish: ttEnd,
+    pct_complete: pct, actual_quantity: actualQty,
+    unit: task.unit || '%', note,
+    updated_by: STATE.user.email,
+    kh_start_snapshot: task.kh_start, kh_finish_snapshot: task.kh_finish,
+    week_number: getISOWeek(now), year: now.getFullYear(),
+  })
+  loading(false)
+  if (error) { toast('Lỗi: ' + error.message, 'error'); return }
+  toast('Đã lưu!', 'success')
+  await loadProjectData(STATE.currentProject.id)
+  showProgressHistory(taskId)
+}
+
+// ═══════════════════════════════════════════════════════════
+// KEY TASK — Planner chọn driving task cho task cha
+// ═══════════════════════════════════════════════════════════
+async function openKeyTaskModal(taskId) {
+  const task = STATE.tasks.find(t => t.id === taskId)
+  if (!task || !task.is_summary) return
+
+  const children = STATE.tasks.filter(t =>
+    t.wbs_code.startsWith(task.wbs_code + '.') && !t.is_summary
+  )
+  const curKeyTask = task.key_task_id ? STATE.tasks.find(t => t.id === task.key_task_id) : null
+
+  openModal(`🔑 Key Task: ${task.name}`, `
+    <div style="font-size:16px;color:var(--gray5);margin-bottom:14px">
+      Chọn công tác con nào sẽ điều khiển % hoàn thành của "${task.name}".
+      Nếu không chọn, hệ thống dùng trung bình có trọng số.
+    </div>
+    ${curKeyTask ? `<div style="padding:8px 12px;background:var(--lblue);border-radius:6px;font-size:16px;margin-bottom:12px">
+      ✅ Key Task hiện tại: <strong>${curKeyTask.name}</strong>
+    </div>` : ''}
+    <div style="max-height:300px;overflow-y:auto;border:1px solid var(--gray2);border-radius:8px">
+      <div onclick="setKeyTask('${taskId}',null)"
+        style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray2);font-size:13px;color:var(--gray5);display:flex;align-items:center;gap:8px"
+        onmouseover="this.style.background='var(--gray1)'" onmouseout="this.style.background='white'">
+        <span>⚖️</span> <em>Dùng trung bình có trọng số (mặc định)</em>
+      </div>
+      ${children.map(c => `
+      <div onclick="setKeyTask('${taskId}','${c.id}')"
+        style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray2);font-size:13px;display:flex;align-items:center;gap:8px;background:${c.id===curKeyTask?.id?'var(--lblue)':'white'}"
+        onmouseover="this.style.background='var(--gray1)'" onmouseout="this.style.background='${c.id===curKeyTask?.id?'var(--lblue)':'white'}'">
+        <span>${c.id === curKeyTask?.id ? '🔑' : '○'}</span>
+        <div>
+          <div style="font-weight:500">${c.name}</div>
+          <div style="font-size:15px;color:var(--gray4)">${c.wbs_code} · ${c.pct_complete||0}% hoàn thành</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">Đóng</button>`)
+}
+
+async function setKeyTask(parentId, keyTaskId) {
+  loading(true, 'Đang lưu...')
+  const { error } = await sb.from('tasks').update({ key_task_id: keyTaskId }).eq('id', parentId)
+  loading(false)
+  if (error) { toast('Lỗi: ' + error.message, 'error'); return }
+  const task = STATE.tasks.find(t => t.id === parentId)
+  if (task) task.key_task_id = keyTaskId
+  toast(keyTaskId ? 'Đã set Key Task!' : 'Đã về trung bình mặc định', 'success')
+  closeModal()
+  STATE.tasks = computeRollupPct(STATE.tasks)
+  navigate('wbs')
+}
+
+// ═══════════════════════════════════════════════════════════
+// TASK SETTINGS — Planner set đơn vị + kế hoạch
+// ═══════════════════════════════════════════════════════════
+async function openTaskSettings(taskId) {
+  const task = STATE.tasks.find(t => t.id === taskId)
+  if (!task) return
+
+  openModal(`⚙️ Cài đặt: ${task.name}`, `
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Đơn vị đo lường</label>
+        <select class="form-input" id="ts-unit" onchange="document.getElementById('ts-unit-custom').style.display=this.value==='other'?'':'none'">
+          ${['%','căn','m²','m³','m','cái','bộ','tấn','kg'].map(u =>
+            `<option value="${u}" ${task.unit===u?'selected':''}>${u}</option>`
+          ).join('')}
+          <option value="other" ${!['%','căn','m²','m³','m','cái','bộ','tấn','kg'].includes(task.unit)?'selected':''}>Khác...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Khối lượng kế hoạch</label>
+        <input class="form-input" type="number" id="ts-qty" placeholder="VD: 66" value="${task.planned_quantity||''}">
+      </div>
+    </div>
+    <div class="form-group" id="ts-unit-custom" style="${!['%','căn','m²','m³','m','cái','bộ','tấn','kg'].includes(task.unit)?'':'display:none'}">
+      <label class="form-label">Đơn vị tùy chỉnh</label>
+      <input class="form-input" type="text" id="ts-unit-text" placeholder="VD: chuyến, lượt..."
+        value="${!['%','căn','m²','m³','m','cái','bộ','tấn','kg'].includes(task.unit)?task.unit||'':''}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        ${task.unit && task.unit !== '%' ? 'Đơn giá HĐ (VND/' + (task.unit||'đvt') + ')' : 'Tổng giá trị công tác (VND)'}
+      </label>
+      <input class="form-input" type="number" id="ts-unit-price"
+        placeholder="${task.unit && task.unit !== '%' ? 'VD: 15000000' : 'VD: 500000000'}"
+        value="${task.unit_price||''}" style="font-size:14px;font-weight:500">
+      ${task.unit_price && task.planned_quantity && task.unit !== '%'
+        ? '<div style="font-size:15px;color:var(--gray4);margin-top:4px">Tổng giá trị: <strong>' + ((task.unit_price * task.planned_quantity)/1e9).toFixed(3) + ' tỷ</strong></div>'
+        : task.unit_price && task.unit === '%'
+        ? '<div style="font-size:15px;color:var(--gray4);margin-top:4px">Giá trị công tác: <strong>' + (task.unit_price/1e9).toFixed(3) + ' tỷ</strong></div>'
+        : ''}
+    </div>
+    ${task.is_summary ? `
+    <div style="margin-top:4px;padding:10px;background:var(--lblue);border-radius:6px;font-size:16px;color:var(--gray6)">
+      💡 Task này là hạng mục cha — bạn cũng có thể <a href="#" onclick="closeModal();openKeyTaskModal('${taskId}');return false" style="color:var(--blue)">chọn Key Task</a> để điều khiển tiến độ.
+    </div>` : ''}
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+    <button class="btn btn-primary" onclick="saveTaskSettings('${taskId}')">💾 Lưu</button>
+  `)
+}
+
+async function saveTaskSettings(taskId) {
+  const unitSel = document.getElementById('ts-unit').value
+  const unit = unitSel === 'other' ? (document.getElementById('ts-unit-text').value.trim() || '%') : unitSel
+  const planned_quantity = parseFloat(document.getElementById('ts-qty').value) || null
+  const unit_price = parseFloat(document.getElementById('ts-unit-price').value) || null
+
+  loading(true, 'Đang lưu...')
+  const { error } = await sb.from('tasks').update({ unit, planned_quantity, unit_price }).eq('id', taskId)
+  loading(false)
+  if (error) { toast('Lỗi: ' + error.message, 'error'); return }
+  const task = STATE.tasks.find(t => t.id === taskId)
+  if (task) { task.unit = unit; task.planned_quantity = planned_quantity; task.unit_price = unit_price }
+  toast('Đã lưu cài đặt!', 'success')
+  closeModal()
+  navigate('wbs')
+}
+
+// ═══════════════════════════════════════════════════════════
+// ẢNH ĐÍNH KÈM BÁO CÁO
+// ═══════════════════════════════════════════════════════════
+if (!window._reportAttachments) window._reportAttachments = []
+
+function renderReportPhotoGrid() {
+  const grid = document.getElementById('report-photo-grid')
+  if (!grid) return
+  const photos = window._reportAttachments
+  if (!photos.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--gray4);font-size:12px;padding:16px;border:1px dashed var(--gray3);border-radius:var(--radius)">Chưa có ảnh đính kèm — chọn từ thư viện hoặc upload mới</div>`
+    return
+  }
+  grid.innerHTML = photos.map((p, i) => `
+    <div style="border-radius:8px;overflow:hidden;border:1px solid var(--gray2);background:white;position:relative">
+      <div style="width:100%;padding-top:66%;position:relative;overflow:hidden;background:var(--gray1)">
+        <img src="${p.url}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.parentElement.style.background='#FEE2E2'">
+      </div>
+      <div style="padding:6px 8px;background:#FAFAFA;border-top:1px solid var(--gray2)">
+        <div style="font-size:9px;color:var(--gray4);margin-bottom:3px;font-weight:500">✏️ CAPTION / GHI CHÚ:</div>
+        <input type="text" value="${p.caption||''}" placeholder="Nhập ghi chú hoặc cảnh báo..."
+          style="width:100%;font-size:12px;border:1px solid var(--gray3);border-radius:4px;padding:5px 8px;color:var(--gray7);background:white;outline:none;box-sizing:border-box"
+          oninput="window._reportAttachments[${i}].caption=this.value">
+      </div>
+      <button onclick="removeReportPhoto(${i})"
+        style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.5);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">✕</button>
+    </div>`).join('')
+}
+
+function removeReportPhoto(idx) { window._reportAttachments.splice(idx,1); renderReportPhotoGrid() }
+
+function addReportPhoto(url, caption='') {
+  if (window._reportAttachments.length >= 6) { toast('Tối đa 6 ảnh đính kèm','error'); return false }
+  if (window._reportAttachments.find(p=>p.url===url)) { toast('Ảnh này đã được thêm',''); return false }
+  window._reportAttachments.push({url,caption}); renderReportPhotoGrid(); return true
+}
+
+async function openReportPhotoLibrary() {
+  const modal=document.getElementById('report-library-modal'), grid=document.getElementById('report-library-grid')
+  if(!modal||!grid) return
+  modal.style.display='flex'
+  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--gray4)">Đang tải...</div>'
+  const proj=STATE.currentProject, week=getISOWeek(new Date()), year=new Date().getFullYear()
+  const {data:photos}=await sb.from('task_photos').select('id,photo_url,caption,taken_at,task_id,tasks(name)').eq('project_id',proj.id).eq('week_number',week).eq('year',year).order('taken_at',{ascending:false})
+  if(!photos?.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--gray4)">Chưa có ảnh tuần này</div>';return}
+  grid.innerHTML=photos.map(p=>{const isAdded=window._reportAttachments.find(a=>a.url===p.photo_url);const label=!p.task_id?(p.caption||'Ảnh tổng thể'):(p.tasks?.name||p.caption||'—');const date=p.taken_at?new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}):'';return`<div style="border-radius:8px;overflow:hidden;border:2px solid ${isAdded?'var(--blue)':'var(--gray2)'};cursor:pointer;background:white" onclick="toggleLibraryPhoto('${p.photo_url}','${(label||'').replace(/'/g,"\'")}',this)"><div style="width:100%;padding-top:66%;position:relative;overflow:hidden;background:var(--gray1)"><img src="${p.photo_url}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover">${isAdded?'<div style="position:absolute;top:4px;right:4px;background:var(--blue);color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px">✓</div>':''}</div><div style="padding:5px 7px"><div style="font-size:10px;font-weight:500;color:var(--gray7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div><div style="font-size:9px;color:var(--gray4)">${date}</div></div></div>`}).join('')
+}
+
+function toggleLibraryPhoto(url,caption,el){const existing=window._reportAttachments.findIndex(p=>p.url===url);if(existing>=0){window._reportAttachments.splice(existing,1);el.style.borderColor='var(--gray2)';renderReportPhotoGrid()}else{if(addReportPhoto(url,caption))el.style.borderColor='var(--blue)'}}
+
+async function handleReportPhotoUpload(input) {
+  const files=Array.from(input.files).slice(0,6-window._reportAttachments.length)
+  if(!files.length) return
+  loading(true,'Đang upload ảnh...')
+  try {
+    for (const file of files) {
+      let uploadFile=file
+      if(typeof imageCompression!=='undefined') uploadFile=await imageCompression(file,{maxSizeMB:0.3,maxWidthOrHeight:1280,useWebWorker:true,fileType:'image/jpeg'})
+      const proj=STATE.currentProject, path=`${proj.id}/report_attach/${Date.now()}_${Math.random().toString(36).slice(2,6)}.jpg`
+      const buf=await uploadFile.arrayBuffer()
+      const {error}=await sb.storage.from(CFG.STORAGE_BUCKET).upload(path,buf,{upsert:true,contentType:'image/jpeg'})
+      if(error) throw error
+      const {data:urlData}=sb.storage.from(CFG.STORAGE_BUCKET).getPublicUrl(path)
+      addReportPhoto(urlData.publicUrl,file.name.replace(/\.[^.]+$/,''))
+    }
+    toast(`Đã upload ${files.length} ảnh`,'success')
+  } catch(e){toast('Lỗi upload: '+e.message,'error')} finally{loading(false);input.value=''}
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHỌN & SẮP XẾP ẢNH THI CÔNG CHO PDF
+// ═══════════════════════════════════════════════════════════
+async function openPhotoSelector() {
+  const proj=STATE.currentProject, week=getISOWeek(new Date()), year=new Date().getFullYear()
+  const {data:allPhotos}=await sb.from('task_photos').select('id,photo_url,caption,taken_at,task_id,tasks(name)').eq('project_id',proj.id).eq('week_number',week).eq('year',year).order('taken_at',{ascending:false})
+  if(!allPhotos?.length){toast('Chưa có ảnh tuần này','');return}
+  if(!window._selectedPhotos) window._selectedPhotos=allPhotos.slice(0,9).map(p=>({...p}))
+
+  const renderSelector=()=>{
+    const selectedIds=(window._selectedPhotos||[]).map(p=>p.id||p.photo_url)
+    const allGrid=allPhotos.map(p=>{const isSelected=selectedIds.includes(p.id||p.photo_url);const selIdx=selectedIds.indexOf(p.id||p.photo_url);const label=!p.task_id?(p.caption||'Ảnh tổng thể'):(p.tasks?.name||'—');const date=p.taken_at?new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}):'';return`<div data-pid="${p.id}" data-url="${p.photo_url}" data-label="${encodeURIComponent(label||'')}" data-date="${date}" onclick="_handlePhotoClick(this)" style="border-radius:8px;overflow:hidden;border:2px solid ${isSelected?'var(--blue)':'var(--gray2)'};cursor:pointer;position:relative;background:white"><div style="width:100%;padding-top:66%;position:relative;background:var(--gray1)"><img src="${p.photo_url}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover">${isSelected?`<div style="position:absolute;top:4px;left:4px;background:var(--blue);color:white;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">${selIdx+1}</div>`:''}</div><div style="padding:4px 6px;font-size:10px;color:var(--gray6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div><div style="padding:0 6px 4px;font-size:9px;color:var(--gray4)">${date}</div></div>`}).join('')
+    const selList=(window._selectedPhotos||[]).map((p,i)=>{const label=!p.task_id?(p.caption||'Ảnh tổng thể'):(p.tasks?.name||p.caption||'—');return`<div id="sel-item-${i}" draggable="true" ondragstart="dragPhotoStart(${i})" ondragover="event.preventDefault()" ondrop="dragPhotoDrop(${i})" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:white;border:1px solid var(--gray2);border-radius:6px;cursor:grab;margin-bottom:4px"><span style="background:var(--blue);color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${i+1}</span><img src="${p.photo_url}" style="width:40px;height:30px;object-fit:cover;border-radius:4px;flex-shrink:0"><span style="font-size:11px;color:var(--gray7);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</span><span style="font-size:10px;color:var(--gray4);cursor:pointer;padding:2px 6px" onclick="removeSelectedPhoto(${i})">✕</span></div>`}).join('')
+    document.getElementById('ps-all-grid').innerHTML=allGrid
+    document.getElementById('ps-sel-list').innerHTML=selList||'<div style="color:var(--gray4);font-size:12px;padding:8px">Chưa chọn ảnh nào</div>'
+    document.getElementById('ps-sel-count').textContent=`${(window._selectedPhotos||[]).length}/9 ảnh`
+  }
+
+  openModal('🖼️ Chọn & sắp xếp ảnh thi công cho PDF',`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;min-height:55vh">
+      <div><div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:8px">📷 Tất cả ảnh tuần ${week} (${allPhotos.length} ảnh)</div><div id="ps-all-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:calc(55vh - 40px);overflow-y:auto"></div></div>
+      <div><div style="font-size:12px;font-weight:600;color:var(--gray6);margin-bottom:8px;display:flex;justify-content:space-between"><span>✅ Đã chọn (kéo thả để sắp xếp)</span><span id="ps-sel-count" style="color:var(--blue)">0/9 ảnh</span></div><div id="ps-sel-list" style="max-height:calc(55vh - 40px);overflow-y:auto"></div></div>
+    </div>
+  `,`
+    <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+      <button class="btn btn-secondary btn-sm" onclick="resetPhotoSelection()">↩ Reset về mặc định</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" onclick="confirmPhotoSelection()">✅ Xác nhận thứ tự</button>
+      </div>
+    </div>
+  `)
+  const m=document.querySelector('.modal'); m.style.maxWidth='800px'; m.style.maxHeight='90vh'
+  renderSelector(); window._renderPhotoSelector=renderSelector
+}
+
+function togglePhotoSelect(id,url,label,date){const sel=window._selectedPhotos||[];const idx=sel.findIndex(p=>(p.id||p.photo_url)===(id||url));if(idx>=0){sel.splice(idx,1)}else{if(sel.length>=9){toast('Tối đa 9 ảnh cho PDF','error');return}sel.push({id,photo_url:url,caption:label,taken_at:date,task_id:null})}window._selectedPhotos=sel;if(window._renderPhotoSelector)window._renderPhotoSelector()}
+function removeSelectedPhoto(idx){window._selectedPhotos.splice(idx,1);if(window._renderPhotoSelector)window._renderPhotoSelector()}
+let _dragIdx=null
+function dragPhotoStart(idx){_dragIdx=idx}
+function dragPhotoDrop(targetIdx){if(_dragIdx===null||_dragIdx===targetIdx)return;const arr=window._selectedPhotos;const moved=arr.splice(_dragIdx,1)[0];arr.splice(targetIdx,0,moved);_dragIdx=null;if(window._renderPhotoSelector)window._renderPhotoSelector()}
+function resetPhotoSelection(){window._selectedPhotos=null;if(window._renderPhotoSelector)window._renderPhotoSelector();toast('Đã reset về 9 ảnh mới nhất','')}
+function confirmPhotoSelection(){const count=(window._selectedPhotos||[]).length;closeModal();const lbl=document.getElementById('report-photo-count-label');if(lbl)lbl.textContent=`Ảnh thi công (${count})`;toast(`✅ Đã chọn ${count} ảnh theo thứ tự mong muốn`,'success')}
+function _handlePhotoClick(el){const id=el.dataset.pid,url=el.dataset.url,label=decodeURIComponent(el.dataset.label||''),date=el.dataset.date;togglePhotoSelect(id,url,label,date)}
