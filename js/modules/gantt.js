@@ -425,7 +425,7 @@ function renderGanttOverview(el) {
         ${khL!==null?`<div class="gv-bar kh" style="left:${khL.toFixed(1)}%;width:${khW.toFixed(1)}%"></div>`:''}
         ${ttL!==null&&ttW>0?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${ttW.toFixed(1)}%"></div>`:''}
         <div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>
-        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(93,nowPct+0.5).toFixed(1)}%;top:12px">+${delay}d</span>`:''}
+        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag" style="left:${Math.min(93,nowPct+0.5).toFixed(1)}%;top:12px;background:#FEF2F2;color:${getDelayColor(delay)}">+${delay}d</span>`:''}
       </div>
       <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center">${delayLabel}</div>
     </div>`
@@ -552,7 +552,7 @@ function renderGanttMonth(el) {
         ${khW>0?`<div class="gv-bar kh" style="left:${khL.toFixed(1)}%;width:${khW.toFixed(1)}%"></div>`:''}
         ${ttL!==null&&ttW>0?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${ttW.toFixed(1)}%"></div>`:''}
         ${nowPct>=0&&nowPct<=100?`<div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>`:''}
-        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(92,nowPct+0.5).toFixed(1)}%;top:13px">${delay}d trễ</span>`:''}
+        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag" style="left:${Math.min(92,nowPct+0.5).toFixed(1)}%;top:13px;background:#FEF2F2;color:${getDelayColor(delay)}">${delay}d trễ</span>`:''}
       </div>
       <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center;white-space:normal;line-height:1.4">${detail.label}</div>
     </div>`
@@ -643,7 +643,7 @@ ${ws.getDate()}/${ws.getMonth()+1}`, left:i/6*100 }
         ${khW>0?`<div class="gv-bar kh" style="left:${khL.toFixed(1)}%;width:${khW.toFixed(1)}%"></div>`:''}
         ${ttL!==null&&ttW>0?`<div class="gv-bar ${barClass}" style="left:${ttL.toFixed(1)}%;width:${ttW.toFixed(1)}%"></div>`:''}
         ${nowPct>=0&&nowPct<=100?`<div class="gv-now" style="left:${nowPct.toFixed(1)}%"></div>`:''}
-        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag late" style="left:${Math.min(90,nowPct+0.5).toFixed(1)}%;top:14px">${delay}d trễ</span>`:''}
+        ${delay>0&&nowPct>=0&&nowPct<=100?`<span class="gv-delay-tag" style="left:${Math.min(90,nowPct+0.5).toFixed(1)}%;top:14px;background:#FEF2F2;color:${getDelayColor(delay)}">${delay}d trễ</span>`:''}
       </div>
       <div class="gv-cell-small" style="width:${DELAY_W}px;font-size:11px;font-weight:600;color:${delayColor};text-align:center;white-space:normal;line-height:1.4">${detail.label}</div>
     </div>`
