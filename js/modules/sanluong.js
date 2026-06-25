@@ -21,16 +21,8 @@ function sanluong() {
 
   <!-- Chart -->
   <div class="card" style="margin-bottom:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="padding-bottom:8px">
       <div class="card-title" style="margin:0">📊 Biểu đồ sản lượng theo tuần</div>
-      <div style="display:flex;gap:14px;font-size:11px;color:var(--gray5);flex-wrap:wrap">
-        <span style="display:flex;align-items:center;gap:4px">
-          <span style="width:12px;height:12px;background:#2563EB;border-radius:2px;display:inline-block"></span> Sản lượng tuần
-        </span>
-        <span style="display:flex;align-items:center;gap:4px">
-          <span style="width:20px;height:2px;background:#D97706;display:inline-block"></span> Lũy kế
-        </span>
-      </div>
     </div>
     <div id="sl-chart" style="min-height:260px;overflow-x:auto"></div>
   </div>
@@ -306,7 +298,7 @@ async function loadSanLuongChart(proj, nWeeks) {
 function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const isMob  = typeof window !== 'undefined' && window.innerWidth < 1024
   // Mobile: cao hơn để dễ đọc
-  const W = 800, H = isMob ? 380 : 280, PAD_L = isMob ? 72 : 80, PAD_R = 24, PAD_T = isMob ? 36 : 30, PAD_B = isMob ? 50 : 40
+  const W = 800, H = isMob ? 400 : 290, PAD_L = isMob ? 72 : 80, PAD_R = 24, PAD_T = isMob ? 36 : 30, PAD_B = isMob ? 65 : 50
   const chartW = W - PAD_L - PAD_R
   const chartH = H - PAD_T - PAD_B
   const n = labels.length
@@ -325,14 +317,18 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const xC = i => PAD_L + i*(chartW/n) + chartW/(n*2)
   const yC = v => PAD_T + chartH - Math.round(v/maxVal*chartH)
 
-  // Bars EV tuần
+  // Bars EV tuần — label dưới cột (giữa đáy chart và x-label tuần)
   const bars = deltas.map((d, i) => {
-    const x = PAD_L + i*(chartW/n) + (chartW/n - barW)/2
-    const h = Math.max(2, Math.round(d/maxVal*chartH))
-    const y = PAD_T + chartH - h
+    const x  = PAD_L + i*(chartW/n) + (chartW/n - barW)/2
+    const h  = Math.max(2, Math.round(d/maxVal*chartH))
+    const y  = PAD_T + chartH - h
+    const cx = PAD_L + i*(chartW/n) + chartW/(n*2)
+    // Label nằm ở vị trí giữa đáy chart và x-label (H - PAD_B + 4)
+    const lblY = PAD_T + chartH + (isMob ? 16 : 12)
+    const lblSz = isMob ? 11 : 8
     return `<g><title>${labels[i]}: ${fmtB(d)}</title>
       <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.75"/>
-      ${d>0?`<text x="${x+barW/2}" y="${y-5}" text-anchor="middle" font-size="${isMob?12:8}" fill="#1D4ED8" font-weight="700">${fmtB(d)}</text>`:''}
+      ${d>0?`<text x="${cx}" y="${lblY}" text-anchor="middle" font-size="${lblSz}" fill="#1D4ED8" font-weight="700">${fmtB(d)}</text>`:''}
     </g>`
   }).join('')
 
@@ -369,7 +365,7 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
 
   // X labels
   const xLabels = labels.map((lbl,i) =>
-    `<text x="${xC(i)}" y="${H-8}" text-anchor="middle" font-size="${isMob?12:9}" fill="var(--gray5)" font-weight="${isMob?'500':'400'}">${lbl}</text>`
+    `<text x="${xC(i)}" y="${H-(isMob?10:8)}" text-anchor="middle" font-size="${isMob?13:9}" fill="var(--gray5)" font-weight="${isMob?'600':'400'}">${lbl}</text>`
   ).join('')
 
   // SPI = EV / PV tại tuần cuối
