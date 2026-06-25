@@ -166,7 +166,6 @@ function initWbs() {
       <div class="wbs-status wbs-mobile-status" style="font-size:11px;text-align:center;padding:0 4px">
         ${(() => {
           if (t.is_summary) {
-            // Tìm max delay từ các task lá con chưa hoàn thành
             const descendants = tasks.filter(c =>
               c.wbs_code && t.wbs_code &&
               c.wbs_code.startsWith(t.wbs_code + '.') &&
@@ -174,16 +173,12 @@ function initWbs() {
             )
             const incomplete = descendants.filter(c => (c.display_pct||0) < 100)
             if (!incomplete.length) {
-              // Tất cả con đã hoàn thành
               const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
               if (pct === 100) return '<span class="badge badge-green" style="font-size:10px">✅ Xong</span>'
               return ''
             }
             const maxDelay = Math.max(...incomplete.map(c => c.delay_days||0))
-            if (maxDelay <= 0) {
-              return '<span class="badge badge-green" style="font-size:10px">🟢 Đúng KH</span>'
-            }
-            return '<span class="badge badge-red" style="white-space:normal;line-height:1.4;font-size:10px">Trễ '+maxDelay+'n</span>'
+            return getDelayBadgeHtml(maxDelay, 0)
           }
           // Task lá: hiện đầy đủ
           const d = calcProgressDetail(t)
@@ -191,11 +186,11 @@ function initWbs() {
           if (d.delayDays === null || d.delayDays === undefined) return statusBadge(rowStatus)
           if (d.delayDays <= 0 && (d.aheadDays||0) > 0) {
             const aQty = d.hasUnit ? ' · dư '+(d.aheadQty||0)+' '+(d.unit||'') : ''
-            return '<span class="badge badge-green" style="font-size:10px;white-space:normal;line-height:1.4">Sớm '+(d.aheadDays)+'ngày'+aQty+'</span>'
+            return '<span style="display:inline-flex;align-items:center;padding:3px 7px;border-radius:12px;font-size:10px;font-weight:600;background:#DCFCE7;color:#166534;white-space:normal;line-height:1.4">Sớm '+(d.aheadDays)+'n'+aQty+'</span>'
           }
-          if (d.delayDays <= 0) return '<span class="badge badge-green" style="font-size:10px">🟢 Đúng KH</span>'
+          if (d.delayDays <= 0) return '<span style="display:inline-flex;align-items:center;padding:3px 7px;border-radius:12px;font-size:10px;font-weight:600;background:#DCFCE7;color:#166534">🟢 Đúng KH</span>'
           const qty = d.hasUnit ? (d.missingQty||0)+' '+(d.unit||'') : (d.missingPct||0)+'%'
-          return '<span class="badge badge-red" style="white-space:normal;line-height:1.4;font-size:10px">Trễ '+d.delayDays+'n<br>-'+qty+'</span>'
+          return getDelayBadgeHtml(d.delayDays, 0) + '<span style="font-size:9px;color:#991B1B;display:block;text-align:center">-'+qty+'</span>'
         })()}
       </div>
       ${(() => {
