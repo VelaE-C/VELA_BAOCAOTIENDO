@@ -261,7 +261,12 @@ Rủi ro 2-3 tuần tới có thể phòng ngừa ngay.
 ## 5. VẤN ĐỀ KỸ THUẬT CHUYỂN GIAO
 Gói nào sắp sang giai đoạn tiếp theo? Điều kiện tiên quyết? BCH cần chuẩn bị gì?
 
-QUY TẮC: Viết cho BGĐ · Số liệu macro · Mỗi mục ≤80 từ · **Bold** con số quan trọng · Thẳng thắn, không vòng vo`
+QUY TẮC:
+- Viết cho BGĐ · Số liệu macro · Mỗi mục ≤80 từ · **Bold** con số quan trọng
+- Thẳng thắn, không vòng vo · KHÔNG thêm header, tiêu đề, tên người báo cáo
+- KHÔNG tự tính hay ước lượng số liệu ngoài dữ liệu được cung cấp
+- Nếu velocity/SPI không có data → ghi "Chưa có dữ liệu", KHÔNG tự suy diễn
+- Chỉ viết đúng 5 mục ## theo format yêu cầu, không thêm mục khác`
 
     const { data: { session } } = await sb.auth.getSession()
     const token = session?.access_token
@@ -334,9 +339,14 @@ function showAISummaryModal(text, date, week, projName) {
 
   const iterLabel = STATE._aiUserNote?' + ghi chú KTTC':''
   openModal(`🤖 AI Tóm tắt tiến độ — Tuần ${week}${iterLabel}`, `
-    <div style="padding:10px 14px;background:var(--lblue);border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:var(--gray6);display:flex;justify-content:space-between">
-      <strong>${projName}</strong>
-      <span>Ngày ${date} · Tuần ${week}</span>
+    <div style="padding:10px 14px;background:var(--lblue);border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:var(--gray6)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong style="color:var(--navy)">${projName}</strong>
+        <span>Tuần ${week} · ${date}</span>
+      </div>
+      <div style="display:flex;gap:16px;font-size:11px;color:var(--gray5)">
+        <span>📋 Người báo cáo: <strong style="color:var(--gray7)">Phòng Kỹ Thuật Thi Công</strong></span>
+      </div>
     </div>
     <div style="font-size:13px;line-height:1.7;color:var(--gray7);max-height:45vh;overflow-y:auto;padding-right:4px">
       ${mdRender(text)}
