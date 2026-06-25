@@ -158,8 +158,8 @@ async function loadCompare() {
 
       // Delta badge
       let deltaBadge = '—'
-      if (delta > 0)       deltaBadge = `<span style="color:var(--green);font-weight:700">+${delta}%</span>`
-      else if (delta < 0)  deltaBadge = `<span style="color:var(--red);font-weight:700">${delta}%</span>`
+      if (delta > 0)       deltaBadge = `<span style="color:#16A34A;font-weight:700">+${delta}%</span>`
+      else if (delta < 0)  deltaBadge = `<span style="color:#DC2626;font-weight:700">${delta}%</span>`
       else if (pctA === null && pctB !== null) deltaBadge = `<span style="color:var(--blue);font-weight:700">+${pctB}% (mới)</span>`
 
       rowCount++
