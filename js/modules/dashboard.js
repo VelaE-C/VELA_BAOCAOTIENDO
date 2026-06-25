@@ -92,55 +92,51 @@ async function loadDashboard() {
   }
 
   const rows = summaries.slice(0, 15).map(t => {
-    const pct   = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
-    const cv    = t._contractValue || 0
-    const ev    = t._earnedValue   || 0
-    const delay = t._delay || 0
-    const indent = (t.outline_level - 1) * 16
+    const pct    = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
+    const cv     = t._contractValue || 0
+    const ev     = t._earnedValue   || 0
+    const delay  = t._delay || 0
+    const indent = (t.outline_level - 1) * 12
 
-    const barColor = pct === 100 ? '#16A34A'
-                   : delay > 7  ? '#DC2626'
-                   : delay > 0  ? '#D97706'
-                   : '#2563EB'
-
-    const delayTxt = delay > 7  ? `<span style="color:#DC2626;font-size:11px;font-weight:600;white-space:nowrap">Trễ ${delay}d</span>`
-                   : delay > 0  ? `<span style="color:#D97706;font-size:11px;font-weight:600;white-space:nowrap">Trễ ${delay}d</span>`
-                   : delay < 0  ? `<span style="color:#16A34A;font-size:11px;white-space:nowrap">Sớm ${Math.abs(delay)}d</span>`
-                   : `<span style="color:#64748B;font-size:11px;white-space:nowrap">Đúng KH</span>`
-
+    const barColor  = pct === 100 ? '#16A34A' : delay > 7 ? '#DC2626' : delay > 0 ? '#D97706' : '#2563EB'
     const nameBold  = t.outline_level <= 2 ? 700 : 500
     const nameSz    = t.outline_level <= 2 ? 13 : 12
-    const nameColor = t.outline_level === 1 ? 'var(--navy)'
-                    : t.outline_level === 2 ? 'var(--blue)' : 'var(--gray7)'
+    const nameColor = t.outline_level === 1 ? 'var(--navy)' : t.outline_level === 2 ? 'var(--blue)' : 'var(--gray7)'
     const rowBg     = t.outline_level === 1 ? '#F8FAFC' : 'white'
 
+    const delayColor = delay > 7 ? '#DC2626' : delay > 0 ? '#D97706' : delay < 0 ? '#16A34A' : '#64748B'
+    const delayLabel = delay > 0 ? `trễ ${delay}d` : delay < 0 ? `sớm ${Math.abs(delay)}d` : 'đúng KH'
+
     return `
-    <div style="padding:10px 16px;padding-left:${16+indent}px;border-bottom:1px solid var(--gray2);background:${rowBg}">
-      <!-- Dòng 1: Tên + ngày + lệch -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
-        <span style="font-size:${nameSz}px;font-weight:${nameBold};color:${nameColor};flex:1;min-width:0;word-break:break-word;line-height:1.4">${t.name}</span>
-        <div style="text-align:right;flex-shrink:0">
-          ${delayTxt}
+    <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--gray2);background:${rowBg}">
+      <!-- CỘT TRÁI: tên + ngày + bar + % -->
+      <div style="flex:1;min-width:0;padding:10px 12px;padding-left:${14+indent}px">
+        <!-- Tên -->
+        <div style="font-size:${nameSz}px;font-weight:${nameBold};color:${nameColor};
+          word-break:break-word;line-height:1.4;margin-bottom:3px">${t.name}</div>
+        <!-- Ngày + lệch inline -->
+        <div style="font-size:11px;color:var(--gray4);margin-bottom:7px">
+          ${fmtDateShort(t.kh_start)} → ${fmtDateShort(t.kh_finish)}
+          ${delay !== 0 ? `<span style="color:${delayColor};font-weight:600;margin-left:4px">(${delayLabel})</span>` : ''}
+        </div>
+        <!-- Bar + % -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:7px;background:var(--gray2);border-radius:4px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px"></div>
+          </div>
+          <span style="font-size:12px;font-weight:700;color:${barColor};width:32px;text-align:right;flex-shrink:0">${pct}%</span>
         </div>
       </div>
-      <!-- Dòng 2: ngày KH nhỏ -->
-      <div style="font-size:11px;color:var(--gray4);margin-bottom:6px">
-        ${fmtDateShort(t.kh_start)} → ${fmtDateShort(t.kh_finish)}
-      </div>
-      <!-- Dòng 3: Bar + % + tiền -->
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="flex:1;height:7px;background:var(--gray2);border-radius:4px;overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;transition:width .3s"></div>
-        </div>
-        <span style="font-size:12px;font-weight:700;color:${barColor};width:36px;text-align:right;flex-shrink:0">${pct}%</span>
-        ${cv > 0 ? `
-        <span style="flex-shrink:0;display:flex;align-items:center;gap:3px">
-          <span style="font-size:14px;font-weight:700;color:#0D9488">${fmtShort(ev)}</span>
-          <span style="font-size:11px;color:var(--gray3)">/</span>
-          <span style="font-size:13px;font-weight:500;color:#1A2B4A">${fmtShort(cv)}</span>
-        </span>
-        ` : ''}
-      </div>
+      <!-- CỘT PHẢI: sản lượng to -->
+      ${cv > 0 ? `
+      <div style="flex-shrink:0;width:90px;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;
+        border-left:1px solid var(--gray2);padding:8px 6px;
+        background:${rowBg}">
+        <span style="font-size:18px;font-weight:800;color:#0D9488;line-height:1.2">${fmtShort(ev)}</span>
+        <span style="font-size:9px;color:var(--gray3);margin:2px 0">─────</span>
+        <span style="font-size:13px;font-weight:500;color:#1A2B4A;line-height:1.2">${fmtShort(cv)}</span>
+      </div>` : ''}
     </div>`
   }).join('')
 
