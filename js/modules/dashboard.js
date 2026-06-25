@@ -98,13 +98,12 @@ async function loadDashboard() {
     const delay  = t._delay || 0
     const indent = (t.outline_level - 1) * 12
 
-    const barColor  = pct === 100 ? '#16A34A' : delay > 7 ? '#DC2626' : delay > 0 ? '#D97706' : '#2563EB'
-    const nameBold  = t.outline_level <= 2 ? 700 : 500
-    const nameSz    = t.outline_level <= 2 ? 13 : 12
-    const nameColor = t.outline_level === 1 ? 'var(--navy)' : t.outline_level === 2 ? 'var(--blue)' : 'var(--gray7)'
-    const rowBg     = t.outline_level === 1 ? '#F8FAFC' : 'white'
-
-    const delayColor = delay > 7 ? '#DC2626' : delay > 0 ? '#D97706' : delay < 0 ? '#16A34A' : '#64748B'
+    const barColor   = pct === 100 ? '#16A34A' : getDelayColor(delay)
+    const nameBold   = t.outline_level <= 2 ? 700 : 500
+    const nameSz     = t.outline_level <= 2 ? 13 : 12
+    const nameColor  = t.outline_level === 1 ? 'var(--navy)' : t.outline_level === 2 ? 'var(--blue)' : 'var(--gray7)'
+    const rowBg      = t.outline_level === 1 ? '#F8FAFC' : 'white'
+    const delayColor = getDelayColor(delay)
     const delayLabel = delay > 0 ? `trễ ${delay}d` : delay < 0 ? `sớm ${Math.abs(delay)}d` : 'đúng KH'
 
     return `
