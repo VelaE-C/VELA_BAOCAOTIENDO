@@ -134,7 +134,11 @@ async function loadDashboard() {
         </div>
         <span style="font-size:12px;font-weight:700;color:${barColor};width:36px;text-align:right;flex-shrink:0">${pct}%</span>
         ${cv > 0 ? `
-        <span style="font-size:11px;color:var(--gray4);flex-shrink:0">${fmtShort(ev)}<span style="color:var(--gray3)"> / ${fmtShort(cv)}</span></span>
+        <span style="flex-shrink:0;display:flex;align-items:center;gap:3px">
+          <span style="font-size:14px;font-weight:700;color:#0D9488">${fmtShort(ev)}</span>
+          <span style="font-size:11px;color:var(--gray3)">/</span>
+          <span style="font-size:13px;font-weight:500;color:#1A2B4A">${fmtShort(cv)}</span>
+        </span>
         ` : ''}
       </div>
     </div>`
@@ -244,9 +248,11 @@ async function loadDashboardSLChart() {
       const x = PAD_L + i * (chartW / n) + (chartW/n - barW)/2
       const h = Math.max(2, Math.round(d / maxVal * chartH))
       const y = PAD_T + chartH - h
+      // Luôn hiện số — nếu cột thấp thì hiện phía trên, cột cao thì vẫn trên
+      const lblY = h > 20 ? y - 4 : y - 4
       return `<g><title>${labels[i]}: ${fmtB(d)}</title>
         <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.85"/>
-        ${h > 16 ? `<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="#1D4ED8" font-weight="600">${fmtB(d)}</text>` : ''}
+        ${d > 0 ? `<text x="${x+barW/2}" y="${lblY}" text-anchor="middle" font-size="9" fill="#1D4ED8" font-weight="600">${fmtB(d)}</text>` : ''}
       </g>`
     }).join('')
 
