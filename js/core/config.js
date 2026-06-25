@@ -32,6 +32,31 @@ let STATE = {
 }
 
 // ═══════════════════════════════════════════════════════════
+// DELAY COLOR — dùng chung toàn app
+// ═══════════════════════════════════════════════════════════
+function getDelayColor(delayDays) {
+  if (delayDays > 14) return '#DC2626'   // đỏ: nghiêm trọng
+  if (delayDays >= 7) return '#D97706'   // cam: cần chú ý
+  return '#16A34A'                        // xanh lá: đúng KH / sớm / trễ nhẹ ≤6d
+}
+
+function getDelayLabel(delayDays) {
+  if (delayDays > 0) return `Trễ ${delayDays}d`
+  if (delayDays < 0) return `Sớm ${Math.abs(delayDays)}d`
+  return 'Đúng KH'
+}
+
+function getDelayBadgeHtml(delayDays, pct) {
+  if (pct === 100) return '<span class="badge badge-green" style="font-size:10px">✅ Xong</span>'
+  const color = getDelayColor(delayDays)
+  const label = getDelayLabel(delayDays)
+  const bg    = delayDays > 14 ? '#FEE2E2' : delayDays >= 7 ? '#FEF3C7' : '#DCFCE7'
+  const fc    = delayDays > 14 ? '#991B1B' : delayDays >= 7 ? '#92400E' : '#166534'
+  return `<span style="display:inline-flex;align-items:center;padding:3px 7px;border-radius:12px;
+    font-size:10px;font-weight:600;background:${bg};color:${fc};white-space:nowrap">${label}</span>`
+}
+
+// ═══════════════════════════════════════════════════════════
 // ROLLUP TIỀN — tính _contractValue và _earnedValue cho toàn bộ cây
 // Chạy TRƯỚC computeRollupPct để % tiền dùng được cho tất cả panel
 // ═══════════════════════════════════════════════════════════
