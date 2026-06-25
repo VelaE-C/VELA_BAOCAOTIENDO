@@ -32,7 +32,7 @@ function sanluong() {
         </span>
       </div>
     </div>
-    <div id="sl-chart" style="min-height:220px;overflow-x:auto"></div>
+    <div id="sl-chart" style="min-height:260px;overflow-x:auto"></div>
   </div>
 
   <!-- Bảng hạng mục -->
@@ -304,15 +304,16 @@ async function loadSanLuongChart(proj, nWeeks) {
 }
 
 function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
-  const W = 800, H = 280, PAD_L = 80, PAD_R = 24, PAD_T = 30, PAD_B = 40
+  const isMob  = typeof window !== 'undefined' && window.innerWidth < 1024
+  // Mobile: cao hơn để dễ đọc
+  const W = 800, H = isMob ? 380 : 280, PAD_L = isMob ? 72 : 80, PAD_R = 24, PAD_T = isMob ? 36 : 30, PAD_B = isMob ? 50 : 40
   const chartW = W - PAD_L - PAD_R
   const chartH = H - PAD_T - PAD_B
   const n = labels.length
   if (!n) { el.innerHTML = '<div style="color:var(--gray4);padding:20px;text-align:center">Không có dữ liệu</div>'; return }
 
   const maxVal = Math.max(...ev, ...pv, totalCV, 1)
-  const barW   = Math.max(6, Math.floor(chartW / n) - 6)
-  const isMob  = typeof window !== 'undefined' && window.innerWidth < 1024
+  const barW   = Math.max(isMob?10:6, Math.floor(chartW / n) - (isMob?8:6))
 
   const fmtB = v => {
     if (!v) return '0'
@@ -331,7 +332,7 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
     const y = PAD_T + chartH - h
     return `<g><title>${labels[i]}: ${fmtB(d)}</title>
       <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.75"/>
-      ${d>0?`<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="${isMob?10:8}" fill="#1D4ED8" font-weight="600">${fmtB(d)}</text>`:''}
+      ${d>0?`<text x="${x+barW/2}" y="${y-5}" text-anchor="middle" font-size="${isMob?12:8}" fill="#1D4ED8" font-weight="700">${fmtB(d)}</text>`:''}
     </g>`
   }).join('')
 
@@ -341,7 +342,7 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
     const isLast = i===n-1
     return `<g>
       <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?4:3}" fill="#D97706"/>
-      ${isLast?`<text x="${xC(i)}" y="${yC(v)-9}" text-anchor="middle" font-size="${isMob?10:9}" fill="#D97706" font-weight="700">${fmtB(v)}</text>`:''}
+      ${isLast?`<text x="${xC(i)}" y="${yC(v)-10}" text-anchor="middle" font-size="${isMob?13:9}" fill="#D97706" font-weight="700">${fmtB(v)}</text>`:''}
     </g>`
   }).join('')
 
@@ -351,7 +352,7 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
     const isLast = i===n-1
     return `<g>
       <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?4:2}" fill="#16A34A" opacity="0.8"/>
-      ${isLast?`<text x="${xC(i)+6}" y="${yC(v)}" text-anchor="start" font-size="${isMob?10:9}" fill="#16A34A" font-weight="700">${fmtB(v)}</text>`:''}
+      ${isLast?`<text x="${xC(i)+6}" y="${yC(v)}" text-anchor="start" font-size="${isMob?13:9}" fill="#16A34A" font-weight="700">${fmtB(v)}</text>`:''}
     </g>`
   }).join('')
 
@@ -359,15 +360,16 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const hdY = totalCV > 0 ? yC(totalCV) : -1
 
   // Y ticks
+  const tickFontSz = isMob ? 11 : 9
   const yTicks = [0,0.25,0.5,0.75,1].map(r => {
     const y = PAD_T + chartH - r*chartH
     return `<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="var(--gray2)" stroke-width="0.5"/>
-      <text x="${PAD_L-5}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--gray4)">${fmtB(r*maxVal)}</text>`
+      <text x="${PAD_L-5}" y="${y+3}" text-anchor="end" font-size="${tickFontSz}" fill="var(--gray4)">${fmtB(r*maxVal)}</text>`
   }).join('')
 
   // X labels
   const xLabels = labels.map((lbl,i) =>
-    `<text x="${xC(i)}" y="${H-6}" text-anchor="middle" font-size="${isMob?11:9}" fill="var(--gray5)">${lbl}</text>`
+    `<text x="${xC(i)}" y="${H-8}" text-anchor="middle" font-size="${isMob?12:9}" fill="var(--gray5)" font-weight="${isMob?'500':'400'}">${lbl}</text>`
   ).join('')
 
   // SPI = EV / PV tại tuần cuối
