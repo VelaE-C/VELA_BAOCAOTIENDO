@@ -51,17 +51,21 @@ async function loadCompare() {
   }
 
   // Fetch tiến độ 2 tuần — lấy bản mới nhất ≤ tuần đó (không bị mất data task đã 100%)
+  // Logic: lấy bản ghi có week_number lớn nhất ≤ tuần T (BCH nhập thứ 7)
+  // Nếu cùng tuần có nhiều bản → lấy updated_at mới nhất
   const [{ data: rawA }, { data: rawB }] = await Promise.all([
     sb.from('task_progress')
-      .select('task_id, pct_complete, note')
+      .select('task_id, pct_complete, note, week_number, updated_at')
       .eq('project_id', STATE.currentProject.id)
       .lte('week_number', weekA).eq('year', yr)
-      .order('week_number', { ascending: false }),
+      .order('week_number', { ascending: false })
+      .order('updated_at', { ascending: false }),
     sb.from('task_progress')
-      .select('task_id, pct_complete, note')
+      .select('task_id, pct_complete, note, week_number, updated_at')
       .eq('project_id', STATE.currentProject.id)
       .lte('week_number', weekB).eq('year', yr)
       .order('week_number', { ascending: false })
+      .order('updated_at', { ascending: false })
   ])
 
   // Lấy bản mới nhất theo task_id (do sort desc, first = newest)
