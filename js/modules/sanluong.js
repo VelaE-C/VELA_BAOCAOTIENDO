@@ -221,15 +221,21 @@ async function loadSanLuongChart(proj, nWeeks) {
   })
 
   // Tính pct của task tại tuần X (bản gần nhất ≤ tuần X)
+  // Logic: lấy bản ghi mới nhất (week_number lớn nhất) ≤ tuần T
+  // Tin BCH — nếu nhập lùi % thì đó là correction, không dùng Math.max
   function getPctAtWeek(taskId, wk, yr) {
     const hist = taskHistory[taskId] || []
-    let best = 0
+    let best = null
+    let bestWk = -1
     hist.forEach(p => {
       if (p.year < yr || (p.year === yr && p.week_number <= wk)) {
-        best = Math.max(best, p.pct_complete||0)
+        if (p.week_number > bestWk) {
+          bestWk = p.week_number
+          best = p.pct_complete ?? 0
+        }
       }
     })
-    return best
+    return best ?? 0
   }
 
   // Sắp xếp tuần
@@ -282,7 +288,7 @@ async function loadSanLuongChart(proj, nWeeks) {
       const cv  = (t.unit_price||0) * (t.planned_quantity||1)
       return s + cv * pct / 100
     }, 0)
-    weeklyDelta.push(Math.max(0, ev - prevEV))
+    weeklyDelta.push(ev - prevEV)  // cho phép âm nếu BCH correction
     weeklyEV.push(ev)
     weeklyPV.push(getPVatWeek(week, year))
     prevEV = ev
@@ -304,7 +310,7 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const n = labels.length
   if (!n) { el.innerHTML = '<div style="color:var(--gray4);padding:20px;text-align:center">Không có dữ liệu</div>'; return }
 
-  const maxVal = Math.max(...ev, ...pv, totalCV, 1)
+  const maxVal = Math.max(...ev, ...pv, ...deltas.map(Math.abs), totalCV, 1)
   const barW   = Math.max(isMob?10:6, Math.floor(chartW / n) - (isMob?8:6))
 
   const fmtB = v => {
@@ -317,26 +323,28 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const xC = i => PAD_L + i*(chartW/n) + chartW/(n*2)
   const yC = v => PAD_T + chartH - Math.round(v/maxVal*chartH)
 
-  // Bars EV tuần — label dưới cột (giữa đáy chart và x-label tuần)
-  // Tính prevWeek label để dùng trong tooltip
+  // Bars EV tuần — label dưới cột, cho phép âm (màu đỏ) khi BCH correction
   const prevLabels = labels.map((lbl, i) => i > 0 ? labels[i-1] : 'đầu dự án')
-
   const bars = deltas.map((d, i) => {
-    const x  = PAD_L + i*(chartW/n) + (chartW/n - barW)/2
-    const h  = Math.max(2, Math.round(d/maxVal*chartH))
-    const y  = PAD_T + chartH - h
-    const cx = PAD_L + i*(chartW/n) + chartW/(n*2)
-    // Label nằm ở vị trí giữa đáy chart và x-label (H - PAD_B + 4)
-    const lblY = PAD_T + chartH + (isMob ? 16 : 12)
-    const lblSz = isMob ? 11 : 8
-    // Tooltip giải thích rõ đây là delta EV so với tuần trước
-    const tooltipText = d > 0
-      ? `${labels[i]}: EV tăng +${fmtB(d)} so với ${prevLabels[i]}`
+    const isNeg  = d < 0
+    const absD   = Math.abs(d)
+    const barH   = Math.max(2, Math.round(absD/maxVal*chartH))
+    const x      = PAD_L + i*(chartW/n) + (chartW/n - barW)/2
+    // Bar âm vẽ xuống dưới baseline
+    const y      = isNeg ? PAD_T + chartH : PAD_T + chartH - barH
+    const cx     = PAD_L + i*(chartW/n) + chartW/(n*2)
+    const lblY   = PAD_T + chartH + (isMob ? 16 : 12)
+    const lblSz  = isMob ? 11 : 8
+    const barClr = isNeg ? '#DC2626' : '#2563EB'
+    const lblClr = isNeg ? '#DC2626' : '#1D4ED8'
+    const sign   = isNeg ? '-' : '+'
+    const tooltip = d !== 0
+      ? `${labels[i]}: EV ${sign}${fmtB(absD)} so với ${prevLabels[i]}${isNeg ? ' ⚠️ Giảm — kiểm tra lại BCH' : ''}`
       : `${labels[i]}: Không phát sinh sản lượng`
-    return `<g><title>${tooltipText}</title>
-      <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.75"/>
-      ${d>0?`<text x="${cx}" y="${lblY}" text-anchor="middle" font-size="${lblSz}" fill="#1D4ED8" font-weight="700">
-        <title>${tooltipText}</title>${fmtB(d)}</text>`:''}
+    return `<g><title>${tooltip}</title>
+      <rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${barClr}" rx="2" opacity="0.75"/>
+      ${d!==0?`<text x="${cx}" y="${lblY}" text-anchor="middle" font-size="${lblSz}" fill="${lblClr}" font-weight="700">
+        <title>${tooltip}</title>${isNeg?'-':''}${fmtB(absD)}${isNeg?' ▼':''}</text>`:''}
     </g>`
   }).join('')
 
