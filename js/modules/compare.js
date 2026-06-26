@@ -77,7 +77,6 @@ async function loadCompare() {
     if (!task || task.is_summary) return
     const pctA = mapA[tid]?.pct_complete ?? null
     const pctB = mapB[tid]?.pct_complete ?? null
-    // Chỉ lấy task có thay đổi thực sự giữa 2 tuần
     if (pctA !== pctB && (pctA !== null || pctB !== null)) {
       changedLeafIds.add(tid)
     }
@@ -110,6 +109,7 @@ async function loadCompare() {
   })
 
   // Render cây WBS — chỉ hiện node trong visibleIds
+  // FIX: tính totalTang theo delta EV thực (evB - evA), không dùng delta_pct × khQty
   let totalTang = 0, totalGiam = 0, rowCount = 0
 
   const rows = STATE.tasks
@@ -119,7 +119,6 @@ async function loadCompare() {
       const isSummary = t.is_summary
 
       if (isSummary) {
-        // Task cha — chỉ làm header nhóm, không tính số
         const bgColor = t.outline_level === 1 ? '#1A2B4A'
                       : t.outline_level === 2 ? '#2563EB'
                       : '#EEF2FF'
@@ -139,19 +138,32 @@ async function loadCompare() {
       const note = mapB[t.id]?.note || mapA[t.id]?.note || ''
       const delta = (pctB ?? 0) - (pctA ?? 0)
 
-      // Sản lượng & thành tiền
+      // ── FIX: Tính EV delta theo công thức EVM ──────────────
+      // evA = contractValue × pctA / 100
+      // evB = contractValue × pctB / 100
+      // ttVal = evB - evA  (delta EV thực, nhất quán với sanluong.js)
       const unitPrice = t.unit_price || 0
       const khQty     = t.planned_quantity || 0
+      const contractValue = unitPrice * (khQty || 1)
+
       let slText = '—', ttText = '—'
       let ttVal = null
 
-      if (delta !== 0 && unitPrice > 0 && khQty > 0) {
-        const slDelta = (delta / 100) * khQty
-        ttVal = slDelta * unitPrice
-        const sign = delta > 0 ? '+' : ''
-        const color = delta > 0 ? 'var(--green)' : 'var(--red)'
-        slText = `<span style="color:${color}">${sign}${slDelta.toFixed(2)} ${t.unit||''}</span>`
+      if (delta !== 0 && contractValue > 0) {
+        const evA = contractValue * ((pctA ?? 0) / 100)
+        const evB = contractValue * ((pctB ?? 0) / 100)
+        ttVal = evB - evA  // delta EV thực
+
+        const sign = ttVal > 0 ? '+' : ''
+        const color = ttVal > 0 ? 'var(--green)' : 'var(--red)'
+
+        // SL thay đổi: chỉ hiển thị nếu có KL đơn vị thực
+        if (khQty > 0 && t.unit && t.unit !== '%') {
+          const slDelta = (delta / 100) * khQty
+          slText = `<span style="color:${color}">${sign}${slDelta.toFixed(2)} ${t.unit||''}</span>`
+        }
         ttText = `<span style="color:${color};font-weight:600">${sign}${fmtVND(ttVal)}</span>`
+
         if (ttVal > 0) totalTang += ttVal
         else totalGiam += ttVal
       }
@@ -178,7 +190,7 @@ async function loadCompare() {
         </tr>`
     }).join('')
 
-  // Summary bar
+  // Summary bar: vẫn giữ Tăng / Giảm / Net
   const netVal = totalTang + totalGiam
   const summaryHtml = (totalTang > 0 || totalGiam < 0) ? `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -218,14 +230,14 @@ async function loadCompare() {
           </tr>
         </thead>
         <tbody>${rows}</tbody>
-        ${(totalTang > 0 || totalGiam < 0) ? `
+        ${totalTang > 0 ? `
         <tfoot style="background:var(--gray1)">
           <tr>
             <td colspan="6" style="padding:10px 12px;text-align:right;font-weight:700;font-size:14px">
               Tổng sản lượng tăng tuần ${weekB}:
             </td>
             <td style="padding:10px 8px;text-align:right;font-weight:700;color:var(--green);font-size:14px">
-              ${totalTang > 0 ? '+'+fmtVND(totalTang) : '—'}
+              +${fmtVND(totalTang)}
             </td>
             <td></td>
           </tr>
