@@ -183,15 +183,20 @@ async function loadDashboardSLChart() {
       taskHistory[p.task_id].push(p)
     })
 
+    // Logic: lấy bản ghi week_number lớn nhất ≤ tuần T — nhất quán với sanluong.js và compare.js
     function getPctAtWeek(taskId, wk, yr) {
       const hist = taskHistory[taskId] || []
-      let best = 0
+      let best = null
+      let bestWk = -1
       hist.forEach(p => {
         if (p.year < yr || (p.year === yr && p.week_number <= wk)) {
-          best = Math.max(best, p.pct_complete || 0)
+          if (p.week_number > bestWk) {
+            bestWk = p.week_number
+            best = p.pct_complete ?? 0
+          }
         }
       })
-      return best
+      return best ?? 0
     }
 
     // Build 12 tuần
@@ -214,7 +219,7 @@ async function loadDashboardSLChart() {
         const cv  = (t.unit_price || 0) * (t.planned_quantity || 1)
         return s + cv * pct / 100
       }, 0)
-      weeklyDelta.push(Math.max(0, luyKe - prevLuyKe))
+      weeklyDelta.push(luyKe - prevLuyKe)  // cho phép âm — nhất quán với sanluong.js
       weeklyLuyKe.push(luyKe)
       prevLuyKe = luyKe
     })
@@ -229,7 +234,7 @@ async function loadDashboardSLChart() {
     const chartW  = W - PAD_L - PAD_R
     const chartH  = H - PAD_T - PAD_B
     const n = labels.length
-    const maxVal  = Math.max(...weeklyLuyKe, 1)
+    const maxVal  = Math.max(...weeklyLuyKe, ...weeklyDelta.map(Math.abs), 1)
     const barW    = Math.max(10, Math.floor(chartW / n) - 6)
 
     const fmtB = v => {
@@ -239,15 +244,23 @@ async function loadDashboardSLChart() {
       return Math.round(v/1e3) + 'k'
     }
 
+    const prevLabels = labels.map((lbl, i) => i > 0 ? labels[i-1] : 'đầu dự án')
     const bars = weeklyDelta.map((d, i) => {
-      const x = PAD_L + i * (chartW / n) + (chartW/n - barW)/2
-      const h = Math.max(2, Math.round(d / maxVal * chartH))
-      const y = PAD_T + chartH - h
-      // Luôn hiện số — nếu cột thấp thì hiện phía trên, cột cao thì vẫn trên
-      const lblY = h > 20 ? y - 4 : y - 4
-      return `<g><title>${labels[i]}: ${fmtB(d)}</title>
-        <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.85"/>
-        ${d > 0 ? `<text x="${x+barW/2}" y="${lblY}" text-anchor="middle" font-size="9" fill="#1D4ED8" font-weight="600">${fmtB(d)}</text>` : ''}
+      const isNeg  = d < 0
+      const absD   = Math.abs(d)
+      const barH   = Math.max(2, Math.round(absD / maxVal * chartH))
+      const x      = PAD_L + i * (chartW / n) + (chartW/n - barW)/2
+      const y      = isNeg ? PAD_T + chartH : PAD_T + chartH - barH
+      const lblY   = y - 4
+      const barClr = isNeg ? '#DC2626' : '#2563EB'
+      const lblClr = isNeg ? '#DC2626' : '#1D4ED8'
+      const sign   = isNeg ? '-' : '+'
+      const tooltip = d !== 0
+        ? `${labels[i]}: EV ${sign}${fmtB(absD)} so với ${prevLabels[i]}${isNeg ? ' ⚠️ Kiểm tra BCH' : ''}`
+        : `${labels[i]}: Không phát sinh`
+      return `<g><title>${tooltip}</title>
+        <rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${barClr}" rx="2" opacity="0.85"/>
+        ${d !== 0 ? `<text x="${x+barW/2}" y="${lblY}" text-anchor="middle" font-size="9" fill="${lblClr}" font-weight="600">${isNeg?'-':''}${fmtB(absD)}${isNeg?' ▼':''}</text>` : ''}
       </g>`
     }).join('')
 
