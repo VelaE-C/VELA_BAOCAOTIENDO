@@ -318,6 +318,9 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const yC = v => PAD_T + chartH - Math.round(v/maxVal*chartH)
 
   // Bars EV tuần — label dưới cột (giữa đáy chart và x-label tuần)
+  // Tính prevWeek label để dùng trong tooltip
+  const prevLabels = labels.map((lbl, i) => i > 0 ? labels[i-1] : 'đầu dự án')
+
   const bars = deltas.map((d, i) => {
     const x  = PAD_L + i*(chartW/n) + (chartW/n - barW)/2
     const h  = Math.max(2, Math.round(d/maxVal*chartH))
@@ -326,9 +329,14 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
     // Label nằm ở vị trí giữa đáy chart và x-label (H - PAD_B + 4)
     const lblY = PAD_T + chartH + (isMob ? 16 : 12)
     const lblSz = isMob ? 11 : 8
-    return `<g><title>${labels[i]}: ${fmtB(d)}</title>
+    // Tooltip giải thích rõ đây là delta EV so với tuần trước
+    const tooltipText = d > 0
+      ? `${labels[i]}: EV tăng +${fmtB(d)} so với ${prevLabels[i]}`
+      : `${labels[i]}: Không phát sinh sản lượng`
+    return `<g><title>${tooltipText}</title>
       <rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.75"/>
-      ${d>0?`<text x="${cx}" y="${lblY}" text-anchor="middle" font-size="${lblSz}" fill="#1D4ED8" font-weight="700">${fmtB(d)}</text>`:''}
+      ${d>0?`<text x="${cx}" y="${lblY}" text-anchor="middle" font-size="${lblSz}" fill="#1D4ED8" font-weight="700">
+        <title>${tooltipText}</title>${fmtB(d)}</text>`:''}
     </g>`
   }).join('')
 
