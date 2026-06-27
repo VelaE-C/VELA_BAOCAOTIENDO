@@ -425,10 +425,7 @@ async function loadAttendanceData() {
         <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:#DC2626;border-radius:2px;display:inline-block"></span>Dưới TB 20%</span>
       </div>
     </div>
-    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--gray5)">
-      ${[{l:'Kết cấu',v:data[data.length-1]?.total_ketcau||0,c:'#1D4ED8'},{l:'Hoàn thiện',v:data[data.length-1]?.total_hoanthien||0,c:'#0D9488'},{l:'MEP',v:data[data.length-1]?.total_mep||0,c:'#D97706'},{l:'Công nhật',v:data[data.length-1]?.total_congnhat||0,c:'#9333EA'}].map(b=>`<span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:${b.c};border-radius:2px;display:inline-block"></span>${b.l}: <strong>${b.v}</strong></span>`).join('')}
-      <span style="color:var(--gray4)">· BCH: <strong>${data[data.length-1]?.total_bch||0}</strong></span>
-    </div>`
+`
   } catch(e) {
     el.innerHTML = `<span style="color:var(--red);font-size:13px">Lỗi: ${e.message}</span>`
   }
