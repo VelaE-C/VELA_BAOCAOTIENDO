@@ -250,10 +250,12 @@ async function renderWeeklyPDF() {
       timePct   = Math.min(100, Math.round((today0 - projStart) / (projEnd - projStart) * 100))
     }
     const slPct   = totalCV > 0 ? Math.round(totalEV / totalCV * 100) : 0
-    const diffPct = timePct !== null ? slPct - timePct : null
-    const diffClr = diffPct === null ? '#64748B' : diffPct >= 0 ? '#16A34A' : diffPct >= -15 ? '#D97706' : '#DC2626'
-    const diffTxt = diffPct === null ? '—'
-      : diffPct >= 0 ? `+${diffPct} điểm % (vượt KH)` : `${diffPct} điểm % (chậm KH)`
+    // SPI-based card 3 — đúng EVM, không dùng % thời gian
+    const spiClr  = !spi ? '#64748B' : spi >= 1 ? '#16A34A' : spi >= 0.8 ? '#D97706' : '#DC2626'
+    const spiLabel = !spi ? '—'
+      : spi >= 1   ? `✅ Vượt KH ${Math.round((spi-1)*100)}%`
+      : spi >= 0.8 ? `⚠️ Chậm ${Math.round((1-spi)*100)}% so với KH`
+      :              `🔴 Chậm ${Math.round((1-spi)*100)}% so với KH`
 
     // Card 4: Quân số TB 7 ngày gần nhất
     let avgCNWeek = null
@@ -278,14 +280,12 @@ async function renderWeeklyPDF() {
         <div style="font-size:26px;font-weight:800;color:#1A2B4A;line-height:1.1">${totalCV>0?fmtM(totalCV):'—'}</div>
         <div style="font-size:10px;color:#64748B;margin-top:4px">EV: ${fmtM(totalEV)} · Đạt ${slPct}%</div>
       </div>
-      <!-- Card 3: Tiến độ thời gian vs SL -->
-      <div style="background:${diffClr}10;border-radius:8px;padding:12px;text-align:center;border:1px solid ${diffClr}30">
-        <div style="font-size:9px;color:${diffClr};font-weight:700;letter-spacing:.05em;margin-bottom:4px">TIẾN ĐỘ vs THỜI GIAN</div>
-        <div style="font-size:15px;font-weight:800;color:${diffClr};line-height:1.3">${diffTxt}</div>
-        <div style="font-size:10px;color:#64748B;margin-top:6px">
-          ${timePct!==null?`Thời gian: ${timePct}% · SL: ${slPct}%`:'—'}
-          ${daysLeft!==null?` · Còn ${daysLeft} ngày`:''}
-        </div>
+      <!-- Card 3: SPI -->
+      <div style="background:${spiClr}10;border-radius:8px;padding:12px;text-align:center;border:1px solid ${spiClr}30">
+        <div style="font-size:9px;color:${spiClr};font-weight:700;letter-spacing:.05em;margin-bottom:4px">HIỆU SUẤT TIẾN ĐỘ (SPI)</div>
+        <div style="font-size:32px;font-weight:800;color:${spiClr};line-height:1.1">${spi?spi.toFixed(2):'—'}</div>
+        <div style="font-size:11px;font-weight:700;color:${spiClr};margin-top:2px">${spiLabel}</div>
+        <div style="font-size:10px;color:#64748B;margin-top:4px">EV: ${fmtM(totalEV)} · PV: ${fmtM(totalPV)}${daysLeft!==null?` · Còn ${daysLeft} ngày`:''}</div>
       </div>
       <!-- Card 4: Quân số TB tuần -->
       <div style="background:#F0FDF4;border-radius:8px;padding:12px;text-align:center;border:1px solid #BBF7D0">
