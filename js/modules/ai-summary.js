@@ -190,8 +190,8 @@ PHÂN TÍCH SẢN LƯỢNG (EVM) — TUẦN ${week}:
         const velocity = totalPct - prevPct
         const evDelta  = totalEV - prevEV
         velocityStr = velocity>0
-          ? `+${velocity}% tiến độ tuần này (tăng so với tuần trước)${evDelta>0?' · SL tăng thêm '+fmtMoney(evDelta):''}`
-          : velocity<0?`${velocity}% tiến độ tuần này (giảm)`
+          ? `+${velocity} điểm % so với tuần trước${evDelta>0?' · EV tăng thêm '+fmtMoney(evDelta):''}`
+          : velocity<0?`${velocity} điểm % so với tuần trước (giảm sản lượng)`
           : 'Không thay đổi so với tuần trước'
       }
     } catch(e) {}
@@ -208,7 +208,7 @@ TỔNG QUAN:
 - Chậm tiến độ: ${validLate.length} CT | Trễ TB: ${validAvgDelay} ngày
 - Chưa bắt đầu (quá hạn 60 ngày): ${validNotStarted.length} CT
 ${historyContext}
-VELOCITY: ${velocityStr||'Chưa có dữ liệu tuần trước'}
+XU HƯỚNG TUẦN NÀY (delta so với tuần trước): ${velocityStr||'Chưa có dữ liệu tuần trước'}
 
 ĐANG THI CÔNG — TOP 5:
 ${inProgressSummary||'Chưa có'}
@@ -247,10 +247,10 @@ LƯU Ý:
 YÊU CẦU OUTPUT — viết đúng 5 mục, mỗi mục tối đa 3-4 câu, dùng bullet (•) nếu cần:
 
 ## 1. TỔNG QUAN TIẾN ĐỘ
-% HT vs % thời gian đã qua. Còn bao nhiêu ngày. 1 điểm tích cực nếu có.
+SPI bao nhiêu, ý nghĩa thực tế (đạt/chưa đạt KH sản lượng). Còn bao nhiêu ngày. 1 điểm tích cực nếu có. KHÔNG so sánh % thời gian với % khối lượng vì KH phân phối không đều.
 
 ## 2. PHÂN TÍCH SẢN LƯỢNG (EVM)
-EV vs PV, SPI bao nhiêu, ý nghĩa thực tế. Thiếu bao nhiêu tỷ so với kế hoạch. Xu hướng tốt/xấu hơn tuần trước. (Chỉ viết mục này nếu có dữ liệu đơn giá — nếu SPI = — thì ghi "Chưa có dữ liệu đơn giá để tính EVM")
+EV vs PV, SPI bao nhiêu — đây là thước đo chính xác nhất về tiến độ. Thiếu/vượt bao nhiêu tỷ so với kế hoạch tại thời điểm này. EV delta tuần này tăng/giảm so với tuần trước. (Chỉ viết mục này nếu có dữ liệu đơn giá — nếu SPI = — thì ghi "Chưa có dữ liệu đơn giá để tính EVM")
 
 ## 3. CẢNH BÁO TIMELINE
 Hạng mục nào lệch nghiêm trọng? Nguy cơ trễ deadline? Mức: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
@@ -265,7 +265,9 @@ QUY TẮC:
 - Viết cho BGĐ · Số liệu macro · Mỗi mục ≤80 từ · **Bold** con số quan trọng
 - Thẳng thắn, không vòng vo · KHÔNG thêm header, tiêu đề, tên người báo cáo
 - KHÔNG tự tính hay ước lượng số liệu ngoài dữ liệu được cung cấp
-- Nếu velocity/SPI không có data → ghi "Chưa có dữ liệu", KHÔNG tự suy diễn
+- SPI = EV/PV là thước đo tiến độ chính — KHÔNG dùng cách so sánh % thời gian với % khối lượng
+- Nếu SPI không có data → ghi "Chưa có dữ liệu", KHÔNG tự suy diễn
+- "XU HƯỚNG TUẦN NÀY" là delta điểm % và delta EV — không phải velocity sản lượng vật lý
 - Chỉ viết đúng 5 mục ## theo format yêu cầu, không thêm mục khác`
 
     const { data: { session } } = await sb.auth.getSession()
