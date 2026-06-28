@@ -234,6 +234,7 @@ async function loadDashboardSLChart() {
     const chartW  = W - PAD_L - PAD_R
     const chartH  = H - PAD_T - PAD_B
     const n = labels.length
+    // Bỏ totalCV — tránh scale quá lớn khi HĐ >> EV/PV
     const maxVal  = Math.max(...weeklyLuyKe, ...weeklyDelta.map(Math.abs), 1)
     const barW    = Math.max(10, Math.floor(chartW / n) - 6)
 
@@ -305,56 +306,7 @@ async function loadDashboardSLChart() {
       <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
         ${yTicks}
         <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+chartH}" stroke="var(--gray3)" stroke-width="1"/>
-        ${hdY > 0 ? `<line x1="${PAD_L}" y1="${hdY}" x2="${W-PAD_R}" y2="${hdY}" stroke="var(--red)" stroke-width="1" stroke-dasharray="6 3" opacity="0.5"/>
-          <text x="${W-PAD_R+2}" y="${hdY+3}" font-size="8" fill="var(--red)" opacity="0.7">HĐ</text>` : ''}
-        ${bars}
-        <polyline points="${linePoints}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
-        ${dots}
-        ${xLabels}
-      </svg>`
-  } catch(e) {
-    el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi: ${e.message}</span>`
-    console.warn('SL chart error:', e)
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// ẢNH THI CÔNG TUẦN NÀY
-// ═══════════════════════════════════════════════════════════
-async function loadDashboardPhotos() {
-  const el = document.getElementById('dash-photos-grid')
-  const countEl = document.getElementById('dash-photos-count')
-  if (!el) return
-  el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Đang tải ảnh...</span>'
-  try {
-    const now = new Date(), week = getISOWeek(now), year = now.getFullYear()
-    const { data: photos, error } = await sb.from('task_photos')
-      .select('id,photo_url,taken_at,uploaded_by,task_id')
-      .eq('project_id', STATE.currentProject.id)
-      .eq('week_number', week).eq('year', year)
-      .order('taken_at', { ascending: false }).limit(9)
-    if (error) throw error
-    if (!photos?.length) {
-      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có ảnh nào trong tuần này</span>'
-      if (countEl) countEl.textContent = '0 ảnh'; return
-    }
-    if (countEl) countEl.textContent = `Tuần ${week}/${year} · ${photos.length} ảnh`
-    const taskMap = {}; STATE.tasks.forEach(t => { taskMap[t.id] = t.name })
-    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
-      ${photos.map(p => {
-        const taskName = taskMap[p.task_id] || ''
-        const date = p.taken_at ? new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : ''
-        const uploader = (p.uploaded_by||'').split('@')[0]
-        return `<div style="position:relative;border-radius:8px;overflow:hidden;background:var(--gray1);aspect-ratio:4/3;cursor:pointer" onclick="window.open('${p.photo_url}','_blank')">
-          <img src="${p.photo_url}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;height:100%;color:var(--gray4);font-size:12px&quot;>Lỗi ảnh</div>'">
-          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.65));padding:8px 6px 5px;color:white">
-            ${taskName ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskName}</div>` : ''}
-            <div style="font-size:9px;opacity:.8">${date}${uploader?' · '+uploader:''}</div>
-          </div>
-        </div>`
-      }).join('')}
-    </div>
-    ${photos.length===9?`<div style="text-align:center;margin-top:8px;font-size:12px;color:var(--gray4)">Hiển thị 9 ảnh gần nhất · <span style="color:var(--blue);cursor:pointer" onclick="navigate('photos')">Xem tất cả →</span></div>`:''}`
+        ''/* HD line hidden */`
   } catch(e) {
     el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi: ${e.message}</span>`
   }
