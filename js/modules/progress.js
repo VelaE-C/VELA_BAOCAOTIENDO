@@ -255,8 +255,13 @@ async function renderWeeklyPDF() {
     const diffTxt = diffPct === null ? '—'
       : diffPct >= 0 ? `+${diffPct} điểm % (vượt KH)` : `${diffPct} điểm % (chậm KH)`
 
-    // Card 4: Quân số TB tuần
-    const avgCNWeek = STATE._attendanceData?.avgCN || null
+    // Card 4: Quân số TB 7 ngày gần nhất
+    let avgCNWeek = null
+    if (STATE._attendanceData?.history?.length) {
+      const hist7 = STATE._attendanceData.history.slice(-7)
+      const total7 = hist7.reduce((s, d) => s + (d.cn_proj || 0), 0)
+      avgCNWeek = Math.round(total7 / hist7.length)
+    }
 
     const evmCardsHtml = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
       <!-- Card 1: SL tuần này -->
@@ -286,7 +291,7 @@ async function renderWeeklyPDF() {
       <div style="background:#F0FDF4;border-radius:8px;padding:12px;text-align:center;border:1px solid #BBF7D0">
         <div style="font-size:9px;color:#166534;font-weight:700;letter-spacing:.05em;margin-bottom:4px">QUÂN SỐ TB TUẦN</div>
         <div style="font-size:26px;font-weight:800;color:#16A34A;line-height:1.1">${avgCNWeek!==null?avgCNWeek:'—'}</div>
-        <div style="font-size:10px;color:#64748B;margin-top:4px">CN/ngày · 30 ngày gần nhất</div>
+        <div style="font-size:10px;color:#64748B;margin-top:4px">CN/ngày · TB 7 ngày gần nhất</div>
       </div>
     </div>`
 
