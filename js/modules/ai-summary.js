@@ -179,19 +179,39 @@ PHÂN TÍCH SẢN LƯỢNG (EVM) — TUẦN ${week}:
     }).join('\n')
 
     let velocityStr = ''
+    let evDeltaWeek = null  // EV delta tuần này — tính từ task_progress
     try {
+      // Lấy EV tuần trước từ task_progress (nhất quán với sanluong.js)
+      const lwn = week > 1 ? week - 1 : 52
+      const lwy = week > 1 ? new Date().getFullYear() : new Date().getFullYear() - 1
+      const { data: lpData } = await sb.from('task_progress')
+        .select('task_id, pct_complete, week_number')
+        .eq('project_id', proj.id)
+        .lte('week_number', lwn).eq('year', lwy)
+        .order('week_number', { ascending: false })
+        .order('updated_at', { ascending: false })
+
+      const leafWithPrice = leaf.filter(t => (t.unit_price||0) > 0)
+      if (lpData?.length && leafWithPrice.length > 0) {
+        // Lấy bản mới nhất per task (sort desc đã có)
+        const lm = {}
+        lpData.forEach(p => { if (!lm[p.task_id]) lm[p.task_id] = p.pct_complete || 0 })
+        const evLastWeek = leafWithPrice.reduce((s, t) =>
+          s + (t.unit_price||0) * (t.planned_quantity||1) * (lm[t.id]||0) / 100, 0)
+        evDeltaWeek = totalEV - evLastWeek
+      }
+
+      // velocity % — từ ai_summaries tuần trước
       const { data: lastWeekStats } = await sb.from('ai_summaries')
-        .select('stats').eq('project_id',proj.id)
-        .order('created_at',{ascending:false}).limit(2)
-      if (lastWeekStats?.length>=2) {
+        .select('stats').eq('project_id', proj.id)
+        .order('created_at', { ascending: false }).limit(2)
+      if (lastWeekStats?.length >= 2) {
         const prevStats = JSON.parse(lastWeekStats[1].stats||'{}')
-        const prevPct = prevStats.total_pct||0
-        const prevEV  = prevStats.ev_raw||0
+        const prevPct = prevStats.total_pct || 0
         const velocity = totalPct - prevPct
-        const evDelta  = totalEV - prevEV
-        velocityStr = velocity>0
-          ? `+${velocity} điểm % so với tuần trước${evDelta>0?' · EV tăng thêm '+fmtMoney(evDelta):''}`
-          : velocity<0?`${velocity} điểm % so với tuần trước (giảm sản lượng)`
+        velocityStr = velocity > 0
+          ? `+${velocity} điểm % so với tuần trước`
+          : velocity < 0 ? `${velocity} điểm % so với tuần trước (giảm)`
           : 'Không thay đổi so với tuần trước'
       }
     } catch(e) {}
@@ -208,7 +228,8 @@ TỔNG QUAN:
 - Chậm tiến độ: ${validLate.length} CT | Trễ TB: ${validAvgDelay} ngày
 - Chưa bắt đầu (quá hạn 60 ngày): ${validNotStarted.length} CT
 ${historyContext}
-XU HƯỚNG TUẦN NÀY (delta so với tuần trước): ${velocityStr||'Chưa có dữ liệu tuần trước'}
+SẢN LƯỢNG TUẦN NÀY (EV delta): ${evDeltaWeek!==null ? (evDeltaWeek>=0?'+':'')+fmtMoney(evDeltaWeek) : 'Chưa có dữ liệu tuần trước'}
+XU HƯỚNG TIẾN ĐỘ (delta % so với tuần trước): ${velocityStr||'Chưa có dữ liệu tuần trước'}
 
 ĐANG THI CÔNG — TOP 5:
 ${inProgressSummary||'Chưa có'}
@@ -250,7 +271,7 @@ YÊU CẦU OUTPUT — viết đúng 5 mục, mỗi mục tối đa 3-4 câu, dù
 SPI bao nhiêu, ý nghĩa thực tế (đạt/chưa đạt KH sản lượng). Còn bao nhiêu ngày. 1 điểm tích cực nếu có. KHÔNG so sánh % thời gian với % khối lượng vì KH phân phối không đều.
 
 ## 2. PHÂN TÍCH SẢN LƯỢNG (EVM)
-Câu đầu tiên BẮT BUỘC: "Sản lượng tuần này: +[XU HƯỚNG TUẦN NÀY - lấy số EV delta]" — đây là con số quan trọng nhất BGĐ cần biết ngay. Sau đó: EV lũy kế vs PV, thiếu/vượt bao nhiêu tỷ, SPI = bao nhiêu nghĩa là gì. Xu hướng so với tuần trước tốt hay xấu. (Chỉ viết mục này nếu có dữ liệu đơn giá — nếu SPI = — thì ghi "Chưa có dữ liệu đơn giá để tính EVM")
+Câu đầu tiên BẮT BUỘC: lấy đúng số từ field "SẢN LƯỢNG TUẦN NÀY (EV delta)" viết thành "Sản lượng tuần này: [số đó]" — KHÔNG dùng EV lũy kế. Sau đó: EV lũy kế vs PV, thiếu/vượt bao nhiêu tỷ, SPI = bao nhiêu nghĩa là gì thực tế. Xu hướng so với tuần trước tốt hay xấu. (Chỉ viết mục này nếu có dữ liệu đơn giá — nếu SPI = — thì ghi "Chưa có dữ liệu đơn giá để tính EVM")
 
 ## 3. CẢNH BÁO TIMELINE
 Hạng mục nào lệch nghiêm trọng? Nguy cơ trễ deadline? Mức: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
