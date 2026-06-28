@@ -42,7 +42,10 @@ function dashboard() {
           <span style="width:10px;height:10px;background:#2563EB;border-radius:2px;display:inline-block"></span>Tuần
         </span>
         <span style="display:flex;align-items:center;gap:4px">
-          <span style="width:16px;height:2px;background:#D97706;display:inline-block"></span>Lũy kế
+          <span style="width:16px;height:2px;background:#D97706;display:inline-block"></span>Lũy kế TH (EV)
+        </span>
+        <span style="display:flex;align-items:center;gap:4px">
+          <span style="width:16px;height:2px;background:#16A34A;border-top:2px dashed #16A34A;display:inline-block"></span>Kế hoạch (PV)
         </span>
       </div>
     </div>
@@ -75,14 +78,11 @@ async function loadDashboard() {
   if (!STATE.currentProject) return
   if (!tasks.length) return
 
-  // ── Rollup tiền nếu chưa có ─────────────────────────────
   if (tasks[0]._contractValue === undefined) {
     if (typeof computeRollupMoney === 'function') computeRollupMoney(tasks)
   }
 
-  // ── Bảng Tiến độ & Sản lượng ────────────────────────────
   const summaries = tasks.filter(t => t.is_summary && t.outline_level <= 3)
-  const isMob = window.innerWidth < 1024
 
   const fmtShort = v => {
     if (!v || v === 0) return '—'
@@ -97,7 +97,6 @@ async function loadDashboard() {
     const ev     = t._earnedValue   || 0
     const delay  = t._delay || 0
     const indent = (t.outline_level - 1) * 12
-
     const barColor   = pct === 100 ? '#16A34A' : getDelayColor(delay)
     const nameBold   = t.outline_level <= 2 ? 700 : 500
     const nameSz     = t.outline_level <= 2 ? 13 : 12
@@ -105,20 +104,14 @@ async function loadDashboard() {
     const rowBg      = t.outline_level === 1 ? '#F8FAFC' : 'white'
     const delayColor = getDelayColor(delay)
     const delayLabel = delay > 0 ? `trễ ${delay}d` : delay < 0 ? `sớm ${Math.abs(delay)}d` : 'đúng KH'
-
     return `
     <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--gray2);background:${rowBg}">
-      <!-- CỘT TRÁI: tên + ngày + bar + % -->
       <div style="flex:1;min-width:0;padding:10px 12px;padding-left:${14+indent}px">
-        <!-- Tên -->
-        <div style="font-size:${nameSz}px;font-weight:${nameBold};color:${nameColor};
-          word-break:break-word;line-height:1.4;margin-bottom:3px">${t.name}</div>
-        <!-- Ngày + lệch inline -->
+        <div style="font-size:${nameSz}px;font-weight:${nameBold};color:${nameColor};word-break:break-word;line-height:1.4;margin-bottom:3px">${t.name}</div>
         <div style="font-size:11px;color:var(--gray4);margin-bottom:7px">
           ${fmtDateShort(t.kh_start)} → ${fmtDateShort(t.kh_finish)}
           ${delay !== 0 ? `<span style="color:${delayColor};font-weight:600;margin-left:4px">(${delayLabel})</span>` : ''}
         </div>
-        <!-- Bar + % -->
         <div style="display:flex;align-items:center;gap:8px">
           <div style="flex:1;height:7px;background:var(--gray2);border-radius:4px;overflow:hidden">
             <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px"></div>
@@ -126,12 +119,8 @@ async function loadDashboard() {
           <span style="font-size:12px;font-weight:700;color:${barColor};width:32px;text-align:right;flex-shrink:0">${pct}%</span>
         </div>
       </div>
-      <!-- CỘT PHẢI: sản lượng to -->
       ${cv > 0 ? `
-      <div style="flex-shrink:0;width:90px;display:flex;flex-direction:column;
-        align-items:center;justify-content:center;
-        border-left:1px solid var(--gray2);padding:8px 6px;
-        background:${rowBg}">
+      <div style="flex-shrink:0;width:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--gray2);padding:8px 6px;background:${rowBg}">
         <span style="font-size:18px;font-weight:800;color:${barColor};line-height:1.2">${fmtShort(ev)}</span>
         <span style="font-size:9px;color:var(--gray3);margin:2px 0">─────</span>
         <span style="font-size:13px;font-weight:500;color:#1A2B4A;line-height:1.2">${fmtShort(cv)}</span>
@@ -141,7 +130,6 @@ async function loadDashboard() {
 
   document.getElementById('dash-summary-table').innerHTML = rows || '<div style="padding:20px;color:var(--gray4)">Không có dữ liệu</div>'
 
-  // Load song song
   loadFinanceData()
   loadDashboardSLChart()
   loadDashboardPhotos()
@@ -149,7 +137,7 @@ async function loadDashboard() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// CHART SẢN LƯỢNG 12 TUẦN — Dashboard
+// CHART SẢN LƯỢNG 12 TUẦN — Dashboard (có PV line)
 // ═══════════════════════════════════════════════════════════
 async function loadDashboardSLChart() {
   const el = document.getElementById('dash-sl-chart')
@@ -161,11 +149,6 @@ async function loadDashboardSLChart() {
     const curWeek = getISOWeek(now)
     const curYear = now.getFullYear()
 
-    // Query 12 tuần gần nhất
-    let fromWeek = curWeek - 12
-    let fromYear = curYear
-    if (fromWeek <= 0) { fromWeek += 52; fromYear-- }
-
     const { data: allProg } = await sb.from('task_progress')
       .select('task_id, pct_complete, week_number, year')
       .eq('project_id', STATE.currentProject.id)
@@ -176,67 +159,75 @@ async function loadDashboardSLChart() {
       return
     }
 
-    // Build task history
     const taskHistory = {}
     allProg.forEach(p => {
       if (!taskHistory[p.task_id]) taskHistory[p.task_id] = []
       taskHistory[p.task_id].push(p)
     })
 
-    // Logic: lấy bản ghi week_number lớn nhất ≤ tuần T — nhất quán với sanluong.js và compare.js
+    // Logic nhất quán: bản ghi week_number lớn nhất ≤ tuần T
     function getPctAtWeek(taskId, wk, yr) {
       const hist = taskHistory[taskId] || []
-      let best = null
-      let bestWk = -1
+      let best = null, bestWk = -1
       hist.forEach(p => {
         if (p.year < yr || (p.year === yr && p.week_number <= wk)) {
-          if (p.week_number > bestWk) {
-            bestWk = p.week_number
-            best = p.pct_complete ?? 0
-          }
+          if (p.week_number > bestWk) { bestWk = p.week_number; best = p.pct_complete ?? 0 }
         }
       })
       return best ?? 0
     }
 
-    // Build 12 tuần
+    // Hàm tính PV tại cuối tuần — nhất quán với sanluong.js
+    function weekToEndDate(wk, yr) {
+      const d = new Date(yr, 0, 4)
+      const dow = d.getDay() || 7
+      d.setDate(d.getDate() - dow + 1 + (wk - 1) * 7 + 6)
+      return d
+    }
+
     const leafTasks = STATE.tasks.filter(t => !t.is_summary && (t.unit_price || 0) > 0)
     const weeks = []
     for (let i = 11; i >= 0; i--) {
-      let wk = curWeek - i
-      let yr = curYear
+      let wk = curWeek - i, yr = curYear
       if (wk <= 0) { wk += 52; yr-- }
       weeks.push({ wk, yr, label: `T${wk}` })
     }
 
-    const weeklyDelta = []
-    const weeklyLuyKe = []
-    let prevLuyKe = 0
+    const weeklyDelta = [], weeklyEV = [], weeklyPV = []
+    let prevEV = 0
 
     weeks.forEach(({ wk, yr }) => {
-      const luyKe = leafTasks.reduce((s, t) => {
+      const ev = leafTasks.reduce((s, t) => {
         const pct = getPctAtWeek(t.id, wk, yr)
-        const cv  = (t.unit_price || 0) * (t.planned_quantity || 1)
-        return s + cv * pct / 100
+        return s + (t.unit_price||0) * (t.planned_quantity||1) * pct / 100
       }, 0)
-      weeklyDelta.push(luyKe - prevLuyKe)  // cho phép âm — nhất quán với sanluong.js
-      weeklyLuyKe.push(luyKe)
-      prevLuyKe = luyKe
+
+      const weekEnd = weekToEndDate(wk, yr)
+      const pv = leafTasks.reduce((s, t) => {
+        const cv = (t.unit_price||0) * (t.planned_quantity||1)
+        if (!cv) return s
+        const start = t.kh_start ? new Date(t.kh_start) : null
+        const finish = t.kh_finish ? new Date(t.kh_finish) : null
+        if (!start || !finish) return s
+        if (weekEnd < start) return s
+        if (weekEnd >= finish) return s + cv
+        return s + cv * (weekEnd - start) / (finish - start)
+      }, 0)
+
+      weeklyDelta.push(ev - prevEV)
+      weeklyEV.push(ev)
+      weeklyPV.push(pv)
+      prevEV = ev
     })
 
-    const totalCV = STATE.tasks
-      .filter(t => t.outline_level === 1)
-      .reduce((s, t) => s + (t._contractValue || 0), 0)
-
-    // Render chart
+    const totalCV = STATE.tasks.filter(t => t.outline_level === 1).reduce((s, t) => s + (t._contractValue||0), 0)
     const labels  = weeks.map(w => w.label)
     const W = 700, H = 200, PAD_L = 70, PAD_R = 20, PAD_T = 24, PAD_B = 36
-    const chartW  = W - PAD_L - PAD_R
-    const chartH  = H - PAD_T - PAD_B
+    const chartW = W - PAD_L - PAD_R, chartH = H - PAD_T - PAD_B
     const n = labels.length
-    // Bỏ totalCV — tránh scale quá lớn khi HĐ >> EV/PV
-    const maxVal  = Math.max(...weeklyLuyKe, ...weeklyDelta.map(Math.abs), 1)
-    const barW    = Math.max(10, Math.floor(chartW / n) - 6)
+    // maxVal không dùng totalCV — tránh scale quá lớn
+    const maxVal = Math.max(...weeklyEV, ...weeklyPV, ...weeklyDelta.map(Math.abs), 1)
+    const barW   = Math.max(10, Math.floor(chartW / n) - 6)
 
     const fmtB = v => {
       if (!v || v === 0) return '0'
@@ -245,43 +236,45 @@ async function loadDashboardSLChart() {
       return Math.round(v/1e3) + 'k'
     }
 
+    const xC = i => PAD_L + i*(chartW/n) + chartW/(n*2)
+    const yC = v => PAD_T + chartH - Math.round(v/maxVal*chartH)
+
     const prevLabels = labels.map((lbl, i) => i > 0 ? labels[i-1] : 'đầu dự án')
     const bars = weeklyDelta.map((d, i) => {
-      const isNeg  = d < 0
-      const absD   = Math.abs(d)
-      const barH   = Math.max(2, Math.round(absD / maxVal * chartH))
-      const x      = PAD_L + i * (chartW / n) + (chartW/n - barW)/2
-      const y      = isNeg ? PAD_T + chartH : PAD_T + chartH - barH
-      const lblY   = y - 4
+      const isNeg = d < 0, absD = Math.abs(d)
+      const barH  = Math.max(2, Math.round(absD/maxVal*chartH))
+      const x     = PAD_L + i*(chartW/n) + (chartW/n - barW)/2
+      const y     = isNeg ? PAD_T + chartH : PAD_T + chartH - barH
       const barClr = isNeg ? '#DC2626' : '#2563EB'
       const lblClr = isNeg ? '#DC2626' : '#1D4ED8'
-      const sign   = isNeg ? '-' : '+'
       const tooltip = d !== 0
-        ? `${labels[i]}: EV ${sign}${fmtB(absD)} so với ${prevLabels[i]}${isNeg ? ' ⚠️ Kiểm tra BCH' : ''}`
+        ? `${labels[i]}: EV ${isNeg?'':'+'}${fmtB(d)} so với ${prevLabels[i]}${isNeg?' ⚠️ Kiểm tra BCH':''}`
         : `${labels[i]}: Không phát sinh`
       return `<g><title>${tooltip}</title>
         <rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${barClr}" rx="2" opacity="0.85"/>
-        ${d !== 0 ? `<text x="${x+barW/2}" y="${lblY}" text-anchor="middle" font-size="9" fill="${lblClr}" font-weight="600">${isNeg?'-':''}${fmtB(absD)}${isNeg?' ▼':''}</text>` : ''}
+        ${d !== 0 ? `<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="${lblClr}" font-weight="600">${isNeg?'-':''}${fmtB(absD)}${isNeg?' ▼':''}</text>` : ''}
       </g>`
     }).join('')
 
-    const linePoints = weeklyLuyKe.map((v, i) => {
-      const x = PAD_L + i * (chartW/n) + chartW/(n*2)
-      const y = PAD_T + chartH - Math.round(v / maxVal * chartH)
-      return `${x},${y}`
-    }).join(' ')
-
-    const dots = weeklyLuyKe.map((v, i) => {
-      const x = PAD_L + i*(chartW/n) + chartW/(n*2)
-      const y = PAD_T + chartH - Math.round(v/maxVal*chartH)
-      const isLast = i === n-1
+    // EV line
+    const evPoints = weeklyEV.map((v,i) => `${xC(i)},${yC(v)}`).join(' ')
+    const evDots   = weeklyEV.map((v,i) => {
+      const isLast = i===n-1
       return `<g>
-        <circle cx="${x}" cy="${y}" r="${isLast?4:3}" fill="#D97706"/>
-        ${isLast ? `<text x="${x}" y="${y-8}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="700">${fmtB(v)}</text>` : ''}
+        <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?4:3}" fill="#D97706"/>
+        ${isLast ? `<text x="${xC(i)}" y="${yC(v)-8}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="700">${fmtB(v)}</text>` : ''}
       </g>`
     }).join('')
 
-    const hdY = totalCV > 0 ? PAD_T + chartH - Math.round(totalCV/maxVal*chartH) : -1
+    // PV line — thêm mới
+    const pvPoints = weeklyPV.map((v,i) => `${xC(i)},${yC(v)}`).join(' ')
+    const pvDots   = weeklyPV.map((v,i) => {
+      const isLast = i===n-1
+      return `<g>
+        <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?5:3}" fill="#16A34A" opacity="1"/>
+        ${isLast ? `<text x="${xC(i)}" y="${yC(v)-10}" text-anchor="middle" font-size="10" fill="#16A34A" font-weight="700">${fmtB(v)}</text>` : ''}
+      </g>`
+    }).join('')
 
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map(r => {
       const y = PAD_T + chartH - r*chartH
@@ -290,23 +283,76 @@ async function loadDashboardSLChart() {
     }).join('')
 
     const xLabels = labels.map((lbl, i) => {
-      const x = PAD_L + i*(chartW/n) + chartW/(n*2)
+      const x = xC(i)
       return `<text x="${x}" y="${H-6}" text-anchor="middle" font-size="9" fill="var(--gray5)">${lbl}</text>`
     }).join('')
 
-    const lastEarned = weeklyLuyKe[n-1] || 0
-    const pctDat = totalCV > 0 ? Math.round(lastEarned/totalCV*100) : 0
+    const lastEV = weeklyEV[n-1] || 0
+    const lastPV = weeklyPV[n-1] || 0
+    const spi    = lastPV > 0 ? (lastEV/lastPV).toFixed(2) : null
+    const spiClr = !spi ? '#64748B' : parseFloat(spi)>=1 ? '#16A34A' : parseFloat(spi)>=0.8 ? '#D97706' : '#DC2626'
+    const pctDat = totalCV > 0 ? Math.round(lastEV/totalCV*100) : 0
 
     el.innerHTML = `
-      <div style="display:flex;gap:16px;font-size:12px;color:var(--gray5);margin-bottom:8px;flex-wrap:wrap">
-        <span>Lũy kế: <strong style="color:var(--teal)">${fmtB(lastEarned)}</strong></span>
-        ${totalCV > 0 ? `<span>Giá trị HĐ: <strong style="color:var(--navy)">${fmtB(totalCV)}</strong></span>
-        <span>Đạt: <strong style="color:${pctDat>=80?'var(--green)':pctDat>=50?'var(--amber)':'var(--red)'}">${pctDat}%</strong></span>` : ''}
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--gray5);margin-bottom:8px;flex-wrap:wrap;align-items:center">
+        <span>Lũy kế TH (EV): <strong style="color:#D97706">${fmtB(lastEV)}</strong></span>
+        ${lastPV > 0 ? `<span>Kế hoạch (PV): <strong style="color:#16A34A">${fmtB(lastPV)}</strong></span>` : ''}
+        ${spi ? `<span style="padding:2px 8px;border-radius:10px;background:${spiClr}20;color:${spiClr};font-weight:700;font-size:11px">SPI = ${spi}</span>` : ''}
+        ${totalCV > 0 ? `<span>HD: <strong style="color:var(--navy)">${fmtB(totalCV)}</strong></span><span>Đạt: <strong style="color:${pctDat>=80?'var(--green)':pctDat>=50?'var(--amber)':'var(--red)'}">${pctDat}%</strong></span>` : ''}
       </div>
       <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
         ${yTicks}
         <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+chartH}" stroke="var(--gray3)" stroke-width="1"/>
-        ''/* HD line hidden */`
+        ${bars}
+        <polyline points="${pvPoints}" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-dasharray="8 3" opacity="1"/>
+        ${pvDots}
+        <polyline points="${evPoints}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
+        ${evDots}
+        ${xLabels}
+      </svg>`
+  } catch(e) {
+    el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi: ${e.message}</span>`
+    console.warn('SL chart error:', e)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ẢNH THI CÔNG TUẦN NÀY
+// ═══════════════════════════════════════════════════════════
+async function loadDashboardPhotos() {
+  const el = document.getElementById('dash-photos-grid')
+  const countEl = document.getElementById('dash-photos-count')
+  if (!el) return
+  el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Đang tải ảnh...</span>'
+  try {
+    const now = new Date(), week = getISOWeek(now), year = now.getFullYear()
+    const { data: photos, error } = await sb.from('task_photos')
+      .select('id,photo_url,taken_at,uploaded_by,task_id')
+      .eq('project_id', STATE.currentProject.id)
+      .eq('week_number', week).eq('year', year)
+      .order('taken_at', { ascending: false }).limit(9)
+    if (error) throw error
+    if (!photos?.length) {
+      el.innerHTML = '<span style="color:var(--gray4);font-size:13px">Chưa có ảnh nào trong tuần này</span>'
+      if (countEl) countEl.textContent = '0 ảnh'; return
+    }
+    if (countEl) countEl.textContent = `Tuần ${week}/${year} · ${photos.length} ảnh`
+    const taskMap = {}; STATE.tasks.forEach(t => { taskMap[t.id] = t.name })
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
+      ${photos.map(p => {
+        const taskName = taskMap[p.task_id] || ''
+        const date = p.taken_at ? new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : ''
+        const uploader = (p.uploaded_by||'').split('@')[0]
+        return `<div style="position:relative;border-radius:8px;overflow:hidden;background:var(--gray1);aspect-ratio:4/3;cursor:pointer" onclick="window.open('${p.photo_url}','_blank')">
+          <img src="${p.photo_url}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;height:100%;color:var(--gray4);font-size:12px&quot;>Lỗi ảnh</div>'">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.65));padding:8px 6px 5px;color:white">
+            ${taskName ? `<div style="font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskName}</div>` : ''}
+            <div style="font-size:9px;opacity:.8">${date}${uploader?' · '+uploader:''}</div>
+          </div>
+        </div>`
+      }).join('')}
+    </div>
+    ${photos.length===9?`<div style="text-align:center;margin-top:8px;font-size:12px;color:var(--gray4)">Hiển thị 9 ảnh gần nhất · <span style="color:var(--blue);cursor:pointer" onclick="navigate('photos')">Xem tất cả →</span></div>`:''}`
   } catch(e) {
     el.innerHTML = `<span style="color:var(--gray4);font-size:13px">Lỗi: ${e.message}</span>`
   }
@@ -376,8 +422,7 @@ async function loadAttendanceData() {
         <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:#16A34A;border-radius:2px;display:inline-block"></span>Trên TB</span>
         <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:#DC2626;border-radius:2px;display:inline-block"></span>Dưới TB 20%</span>
       </div>
-    </div>
-`
+    </div>`
   } catch(e) {
     el.innerHTML = `<span style="color:var(--red);font-size:13px">Lỗi: ${e.message}</span>`
   }
