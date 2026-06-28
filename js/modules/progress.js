@@ -232,11 +232,63 @@ async function renderWeeklyPDF() {
     let evLastWeek = 0
     try {
       const lwn=wk>1?wk-1:52, lwy=wk>1?yr:yr-1
-      const { data: lp } = await sb.from('task_progress').select('task_id,pct_complete').eq('project_id',proj.id).eq('week_number',lwn).eq('year',lwy)
-      if (lp?.length) { const lm={}; lp.forEach(p=>{lm[p.task_id]=p.pct_complete||0}); evLastWeek=leafWithPrice.reduce((s,t)=>s+(t.unit_price||0)*(t.planned_quantity||1)*(lm[t.id]||0)/100,0) }
+      const { data: lp } = await sb.from('task_progress').select('task_id,pct_complete,week_number').eq('project_id',proj.id).lte('week_number',lwn).eq('year',lwy).order('week_number',{ascending:false}).order('updated_at',{ascending:false})
+      if (lp?.length) { const lm={}; lp.forEach(p=>{ if(!lm[p.task_id]) lm[p.task_id]=p.pct_complete||0 }); evLastWeek=leafWithPrice.reduce((s,t)=>s+(t.unit_price||0)*(t.planned_quantity||1)*(lm[t.id]||0)/100,0) }
     } catch(e) {}
-    const evThisWeek = Math.max(0, totalEV - evLastWeek)
+    const evThisWeek = totalEV - evLastWeek  // cho phép âm — nhất quán với sanluong.js
     const fmtM = v => { if(!v||v===0)return'—'; if(Math.abs(v)>=1e9)return(v/1e9).toFixed(1)+'tỷ'; if(Math.abs(v)>=1e6)return Math.round(v/1e6)+'tr'; return Math.round(v/1e3)+'k' }
+
+    // ── 4 card mới ──────────────────────────────────────────
+    // Card 3: Tiến độ thời gian vs sản lượng
+    const projStart = tasks.filter(t=>t.kh_start).map(t=>new Date(t.kh_start)).sort((a,b)=>a-b)[0]
+    const projEnd   = tasks.filter(t=>t.kh_finish).map(t=>new Date(t.kh_finish)).sort((a,b)=>b-a)[0]
+    const today0    = new Date(); today0.setHours(0,0,0,0)
+    let timePct = null, daysLeft = null, totalDays = null
+    if (projStart && projEnd) {
+      totalDays = Math.round((projEnd - projStart) / 86400000)
+      daysLeft  = Math.max(0, Math.round((projEnd - today0) / 86400000))
+      timePct   = Math.min(100, Math.round((today0 - projStart) / (projEnd - projStart) * 100))
+    }
+    const slPct   = totalCV > 0 ? Math.round(totalEV / totalCV * 100) : 0
+    const diffPct = timePct !== null ? slPct - timePct : null
+    const diffClr = diffPct === null ? '#64748B' : diffPct >= 0 ? '#16A34A' : diffPct >= -15 ? '#D97706' : '#DC2626'
+    const diffTxt = diffPct === null ? '—'
+      : diffPct >= 0 ? `+${diffPct} điểm % (vượt KH)` : `${diffPct} điểm % (chậm KH)`
+
+    // Card 4: Quân số TB tuần
+    const avgCNWeek = STATE._attendanceData?.avgCN || null
+
+    const evmCardsHtml = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      <!-- Card 1: SL tuần này -->
+      <div style="background:#EFF6FF;border-radius:8px;padding:12px;text-align:center;border:1px solid #BFDBFE">
+        <div style="font-size:9px;color:#1D4ED8;font-weight:700;letter-spacing:.05em;margin-bottom:4px">SẢN LƯỢNG TUẦN NÀY</div>
+        <div style="font-size:26px;font-weight:800;color:${evThisWeek<0?'#DC2626':'#1D4ED8'};line-height:1.1">
+          ${evThisWeek<0?'':'+'}${fmtM(evThisWeek)}
+        </div>
+        <div style="font-size:10px;color:#64748B;margin-top:4px">EV delta tuần ${wk}</div>
+      </div>
+      <!-- Card 2: Tổng giá trị HĐ -->
+      <div style="background:#F8FAFC;border-radius:8px;padding:12px;text-align:center;border:1px solid #E2E8F0">
+        <div style="font-size:9px;color:#475569;font-weight:700;letter-spacing:.05em;margin-bottom:4px">TỔNG GIÁ TRỊ HỢP ĐỒNG</div>
+        <div style="font-size:26px;font-weight:800;color:#1A2B4A;line-height:1.1">${totalCV>0?fmtM(totalCV):'—'}</div>
+        <div style="font-size:10px;color:#64748B;margin-top:4px">EV: ${fmtM(totalEV)} · Đạt ${slPct}%</div>
+      </div>
+      <!-- Card 3: Tiến độ thời gian vs SL -->
+      <div style="background:${diffClr}10;border-radius:8px;padding:12px;text-align:center;border:1px solid ${diffClr}30">
+        <div style="font-size:9px;color:${diffClr};font-weight:700;letter-spacing:.05em;margin-bottom:4px">TIẾN ĐỘ vs THỜI GIAN</div>
+        <div style="font-size:15px;font-weight:800;color:${diffClr};line-height:1.3">${diffTxt}</div>
+        <div style="font-size:10px;color:#64748B;margin-top:6px">
+          ${timePct!==null?`Thời gian: ${timePct}% · SL: ${slPct}%`:'—'}
+          ${daysLeft!==null?` · Còn ${daysLeft} ngày`:''}
+        </div>
+      </div>
+      <!-- Card 4: Quân số TB tuần -->
+      <div style="background:#F0FDF4;border-radius:8px;padding:12px;text-align:center;border:1px solid #BBF7D0">
+        <div style="font-size:9px;color:#166534;font-weight:700;letter-spacing:.05em;margin-bottom:4px">QUÂN SỐ TB TUẦN</div>
+        <div style="font-size:26px;font-weight:800;color:#16A34A;line-height:1.1">${avgCNWeek!==null?avgCNWeek:'—'}</div>
+        <div style="font-size:10px;color:#64748B;margin-top:4px">CN/ngày · 30 ngày gần nhất</div>
+      </div>
+    </div>`
 
     // S-Curve
     let scurveSvgHtml = ''
@@ -244,7 +296,8 @@ async function renderWeeklyPDF() {
       const { data: allProg } = await sb.from('task_progress').select('task_id,pct_complete,week_number,year').eq('project_id',proj.id).order('year').order('week_number').order('updated_at',{ascending:false})
       if (allProg?.length && leafWithPrice.length > 0) {
         const taskHist={}; allProg.forEach(p=>{if(!taskHist[p.task_id])taskHist[p.task_id]=[];taskHist[p.task_id].push(p)})
-        const getPct=(tid,wkn,yrn)=>{let b=0;(taskHist[tid]||[]).forEach(p=>{if(p.year<yrn||(p.year===yrn&&p.week_number<=wkn))b=Math.max(b,p.pct_complete||0)});return b}
+        // Fix: dùng bestWk logic — nhất quán với sanluong.js/compare.js/dashboard.js
+        const getPct=(tid,wkn,yrn)=>{let b=null,bwk=-1;(taskHist[tid]||[]).forEach(p=>{if(p.year<yrn||(p.year===yrn&&p.week_number<=wkn)){if(p.week_number>bwk){bwk=p.week_number;b=p.pct_complete??0}}});return b??0}
         const wkMap={}; allProg.forEach(p=>{const k=`${p.year}-${String(p.week_number).padStart(2,'0')}`;wkMap[k]={week:p.week_number,year:p.year}})
         const wks=Object.keys(wkMap).sort().slice(-12), evArr=[], pvArr=[], lblArr=[]
         wks.forEach(k=>{
@@ -258,7 +311,16 @@ async function renderWeeklyPDF() {
         const maxV=Math.max(...evArr,...pvArr,totalCV,1),xC=i=>PL+i*(cW/n)+cW/(n*2),yC=v=>PT+cH-Math.round(v/maxV*cH)
         const fB=v=>{if(!v)return'0';if(v>=1e9)return(v/1e9).toFixed(1)+'tỷ';if(v>=1e6)return Math.round(v/1e6)+'tr';return Math.round(v/1e3)+'k'}
         const barW=Math.max(10,Math.floor(cW/n)-8)
-        const bars=evArr.map((ev,i)=>{const d=Math.max(0,ev-(i>0?evArr[i-1]:0));const h=Math.max(2,Math.round(d/maxV*cH));const x=PL+i*(cW/n)+(cW/n-barW)/2;const y=PT+cH-h;return`<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="#2563EB" rx="2" opacity="0.75"/>${d>0?`<text x="${x+barW/2}" y="${PT+cH+13}" text-anchor="middle" font-size="9" fill="#1D4ED8" font-weight="600">${fB(d)}</text>`:''}`}).join('')
+        // Bars: delta EV tuần, cho phép âm
+        const bars=evArr.map((ev,i)=>{
+          const d=ev-(i>0?evArr[i-1]:0)
+          const isNeg=d<0, absD=Math.abs(d)
+          const h=Math.max(2,Math.round(absD/maxV*cH))
+          const x=PL+i*(cW/n)+(cW/n-barW)/2
+          const y=isNeg?PT+cH:PT+cH-h
+          const clr=isNeg?'#DC2626':'#2563EB'
+          return`<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="${clr}" rx="2" opacity="0.75"/>${d!==0?`<text x="${x+barW/2}" y="${PT+cH+13}" text-anchor="middle" font-size="9" fill="${clr}" font-weight="600">${isNeg?'-':''}${fB(absD)}</text>`:''}`
+        }).join('')
         const evPts=evArr.map((v,i)=>`${xC(i)},${yC(v)}`).join(' '),pvPts=pvArr.map((v,i)=>`${xC(i)},${yC(v)}`).join(' ')
         const hdY=totalCV>0?yC(totalCV):-1
         const yT=[0,.25,.5,.75,1].map(r=>{const y=PT+cH-r*cH;return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#E2E8F0" stroke-width="0.5"/><text x="${PL-4}" y="${y+3}" text-anchor="end" font-size="8" fill="#94A3B8">${fB(r*maxV)}</text>`}).join('')
@@ -267,10 +329,6 @@ async function renderWeeklyPDF() {
         scurveSvgHtml=`<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;justify-content:space-between;align-items:center"><span>📈 BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN (S-CURVE)</span><span style="display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.9;align-items:center"><span>■ SL tuần</span><span>— Lũy kế TH: <strong>${fB(evArr[n-1]||0)}</strong></span><span style="color:#86EFAC">- - KH: <strong>${fB(pvArr[n-1]||0)}</strong></span>${spiV?`<span style="padding:1px 7px;border-radius:10px;background:${spiC};font-weight:700">SPI=${spiV.toFixed(2)}</span>`:''}</span></div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA"><svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">${yT}<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${PT+cH}" stroke="#CBD5E1" stroke-width="1"/>${hdY>0?`<line x1="${PL}" y1="${hdY}" x2="${W-PR}" y2="${hdY}" stroke="#DC2626" stroke-width="1" stroke-dasharray="5 3" opacity="0.4"/><text x="${W-PR+2}" y="${hdY+3}" font-size="8" fill="#DC2626" opacity="0.7">HĐ</text>`:''} ${bars}<polyline points="${pvPts}" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.8"/>${pvArr.map((v,i)=>`<circle cx="${xC(i)}" cy="${yC(v)}" r="2.5" fill="#16A34A" opacity="0.8"/>`).join('')}<polyline points="${evPts}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>${evArr.map((v,i)=>{const isL=i===n-1;return`<circle cx="${xC(i)}" cy="${yC(v)}" r="${isL?4:2.5}" fill="#D97706"/>${isL?`<text x="${xC(i)}" y="${yC(v)-8}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="700">${fB(v)}</text>`:''}`}).join('')}${xL}</svg></div></div>`
       }
     } catch(e) { console.warn('S-curve:',e) }
-
-    // EVM 5 cards - bỏ 4 card cũ
-    const spiColor=!spi?'#64748B':spi>=1?'#16A34A':spi>=0.8?'#D97706':'#DC2626'
-    const evmCardsHtml=totalCV>0?`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px"><div style="background:#EFF6FF;border-radius:8px;padding:10px;text-align:center;border:1px solid #BFDBFE"><div style="font-size:9px;color:#1D4ED8;font-weight:600;margin-bottom:3px">SL TUẦN NÀY</div><div style="font-size:20px;font-weight:800;color:#1D4ED8">${fmtM(evThisWeek)}</div></div><div style="background:#F0FDF4;border-radius:8px;padding:10px;text-align:center;border:1px solid #BBF7D0"><div style="font-size:9px;color:#166534;font-weight:600;margin-bottom:3px">LŨY KẾ TH (EV)</div><div style="font-size:20px;font-weight:800;color:#0D9488">${fmtM(totalEV)}</div><div style="font-size:9px;color:#64748B">${totalCV>0?Math.round(totalEV/totalCV*100):0}% HĐ</div></div><div style="background:#EFF6FF;border-radius:8px;padding:10px;text-align:center;border:1px solid #BFDBFE"><div style="font-size:9px;color:#1D4ED8;font-weight:600;margin-bottom:3px">KH SẢN LƯỢNG (PV)</div><div style="font-size:20px;font-weight:800;color:#2563EB">${fmtM(totalPV)}</div><div style="font-size:9px;color:#64748B">${totalCV>0?Math.round(totalPV/totalCV*100):0}% HĐ</div></div><div style="background:#F8FAFC;border-radius:8px;padding:10px;text-align:center;border:1px solid #E2E8F0"><div style="font-size:9px;color:#64748B;font-weight:600;margin-bottom:3px">GIÁ TRỊ HĐ (BAC)</div><div style="font-size:20px;font-weight:800;color:#1A2B4A">${fmtM(totalCV)}</div></div><div style="background:${spiColor}10;border-radius:8px;padding:10px;text-align:center;border:1px solid ${spiColor}40"><div style="font-size:9px;color:${spiColor};font-weight:600;margin-bottom:3px">SPI</div><div style="font-size:24px;font-weight:800;color:${spiColor}">${spi?spi.toFixed(2):'—'}</div><div style="font-size:9px;color:${spiColor};font-weight:600">${spi?spi>=1?'✅ Đạt KH':spi>=0.8?'⚠️ Chú ý':'🔴 Chậm':''}</div></div></div>`:''
 
     // Bảng Tiến độ & SL (giống Dashboard/WBS)
     const summaries=tasks.filter(t=>t.is_summary&&t.outline_level<=3)
@@ -285,7 +343,7 @@ async function renderWeeklyPDF() {
     }).join('')
     const summaryTableHtml=`<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">📊 TIẾN ĐỘ & SẢN LƯỢNG THEO HẠNG MỤC</div><table style="width:100%;border-collapse:collapse;border:0.5px solid #E2E8F0"><thead><tr style="background:#1E3A5F;color:white;font-size:11px"><th style="padding:5px 6px;text-align:left;font-weight:600">Hạng mục</th><th style="padding:5px 6px;text-align:center;font-weight:600">KH BĐ → KT</th><th style="padding:5px 6px;text-align:center;font-weight:600;min-width:130px">Tiến độ</th><th style="padding:5px 6px;text-align:center;font-weight:600">Lệch</th><th style="padding:5px 6px;text-align:right;font-weight:600">SL TH</th><th style="padding:5px 6px;text-align:right;font-weight:600">Giá trị HĐ</th></tr></thead><tbody>${tableRows}</tbody></table></div>`
 
-    // Gantt (giống app — màu theo getDelayColor)
+    // Gantt
     const tl=getActualTimeline(tasks); let ganttHtml=''
     if(tl){
       const rangeMs=tl.end-tl.start,todayD=new Date();todayD.setHours(0,0,0,0)
@@ -306,11 +364,11 @@ async function renderWeeklyPDF() {
     // AI parse
     const aiHtml=editedAI.split('\n').map(line=>{if(!line.trim())return'<div style="height:5px"></div>';const c=line.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').trim();if(line.startsWith('## ')||line.startsWith('# '))return`<div style="margin:10px 0 5px;padding:4px 10px;background:#EFF6FF;border-left:3px solid #2563EB;border-radius:0 4px 4px 0;font-weight:700;font-size:13px;color:#1E3A8A">${c.replace(/^#+\s*/,'')}</div>`;return`<div style="font-size:13px;line-height:1.7;color:#1E293B;margin:2px 0">${c}</div>`}).join('')
 
-    // Attach
+    // Attach photos
     let attachHtml='';const attachments=window._reportAttachments||[]
     if(attachments.length){const items=attachments.map(p=>`<div style="border-radius:6px;overflow:hidden;border:0.5px solid #E2E8F0"><div style="width:100%;padding-top:66%;position:relative;background:#F1F5F9"><img src="${p.url}" crossorigin="anonymous" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" onerror="this.parentElement.style.background='#FEE2E2'"></div>${p.caption?`<div style="padding:6px;background:#FFFBEB;border-top:2px solid #F59E0B"><div style="font-size:11px;font-weight:500;color:#92400E">⚠️ ${p.caption}</div></div>`:'<div style="padding:4px 6px;background:#F9FAFB"><div style="font-size:10px;color:#9CA3AF;font-style:italic">Chưa có ghi chú</div></div>'}</div>`).join('');attachHtml=`<div style="margin-bottom:14px"><div style="background:#F59E0B;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">📋 LƯU Ý / HÌNH ẢNH THAM KHẢO (${attachments.length} ảnh)</div><div style="border:0.5px solid #FDE68A;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FFFBEB"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${items}</div></div></div>`}
 
-    // Photos
+    // Thi cong photos
     const finalPhotos=(window._selectedPhotos!==null&&window._selectedPhotos!==undefined)?window._selectedPhotos:(weekPhotos||[]);let photosHtml=''
     if(finalPhotos?.length){const items=finalPhotos.map(p=>{const label=!p.task_id?(p.caption||'Ảnh tổng thể'):(p.tasks?.name||p.caption||'');const date=p.taken_at?new Date(p.taken_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}):'';return`<div style="border-radius:6px;overflow:hidden;border:0.5px solid #E2E8F0"><div style="width:100%;padding-top:66%;position:relative;background:#E2E8F0"><img src="${p.photo_url}" crossorigin="anonymous" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentElement.innerHTML='Lỗi ảnh'"></div><div style="padding:4px 6px"><div style="font-size:10px;font-weight:500;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label.slice(0,35)}</div><div style="font-size:9px;color:#94A3B8">${date}</div></div></div>`}).join('');photosHtml=`<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">📷 ẢNH THI CÔNG TUẦN ${wk}/${yr} (${finalPhotos.length} ảnh)</div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${items}</div></div></div>`}
 
@@ -519,7 +577,7 @@ async function setKeyTask(parentId, keyTaskId) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// TASK SETTINGS — Planner set đơn vị + kế hoạch
+// TASK SETTINGS
 // ═══════════════════════════════════════════════════════════
 async function openTaskSettings(taskId) {
   const task = STATE.tasks.find(t => t.id === taskId)
