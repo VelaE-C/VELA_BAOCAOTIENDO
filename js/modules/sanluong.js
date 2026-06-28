@@ -310,7 +310,8 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const n = labels.length
   if (!n) { el.innerHTML = '<div style="color:var(--gray4);padding:20px;text-align:center">Không có dữ liệu</div>'; return }
 
-  const maxVal = Math.max(...ev, ...pv, ...deltas.map(Math.abs), totalCV, 1)
+  // Bỏ totalCV khỏi maxVal — tránh scale quá lớn khi HĐ >> EV/PV
+  const maxVal = Math.max(...ev, ...pv, ...deltas.map(Math.abs), 1)
   const barW   = Math.max(isMob?10:6, Math.floor(chartW / n) - (isMob?8:6))
 
   const fmtB = v => {
@@ -362,9 +363,10 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
   const pvPoints = pv.map((v,i) => `${xC(i)},${yC(v)}`).join(' ')
   const pvDots = pv.map((v,i) => {
     const isLast = i===n-1
+    // Label PV đặt phía trên điểm (y-14) để không bị label EV che
     return `<g>
-      <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?4:2}" fill="#16A34A" opacity="0.8"/>
-      ${isLast?`<text x="${xC(i)+6}" y="${yC(v)}" text-anchor="start" font-size="${isMob?13:9}" fill="#16A34A" font-weight="700">${fmtB(v)}</text>`:''}
+      <circle cx="${xC(i)}" cy="${yC(v)}" r="${isLast?5:3}" fill="#16A34A" opacity="1"/>
+      ${isLast?`<text x="${xC(i)}" y="${yC(v)-10}" text-anchor="middle" font-size="${isMob?13:9}" fill="#16A34A" font-weight="700">${fmtB(v)}</text>`:''}
     </g>`
   }).join('')
 
@@ -414,10 +416,9 @@ function renderSanLuongChart(el, labels, deltas, ev, pv, totalCV) {
     <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
       ${yTicks}
       <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+chartH}" stroke="var(--gray3)" stroke-width="1"/>
-      ${hdY>0?`<line x1="${PAD_L}" y1="${hdY}" x2="${W-PAD_R}" y2="${hdY}" stroke="#DC2626" stroke-width="1" stroke-dasharray="6 3" opacity="0.4"/>
-        <text x="${W-PAD_R+2}" y="${hdY+3}" font-size="8" fill="#DC2626" opacity="0.7">HĐ</text>`:''}
+      ''/* HD line hidden */}
       ${bars}
-      <polyline points="${pvPoints}" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="6 3" opacity="0.8"/>
+      <polyline points="${pvPoints}" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-dasharray="8 3" opacity="1"/>
       ${pvDots}
       <polyline points="${evPoints}" fill="none" stroke="#D97706" stroke-width="2.5" stroke-linejoin="round"/>
       ${evDots}
