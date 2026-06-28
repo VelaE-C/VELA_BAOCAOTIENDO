@@ -250,7 +250,7 @@ YÊU CẦU OUTPUT — viết đúng 5 mục, mỗi mục tối đa 3-4 câu, dù
 SPI bao nhiêu, ý nghĩa thực tế (đạt/chưa đạt KH sản lượng). Còn bao nhiêu ngày. 1 điểm tích cực nếu có. KHÔNG so sánh % thời gian với % khối lượng vì KH phân phối không đều.
 
 ## 2. PHÂN TÍCH SẢN LƯỢNG (EVM)
-EV vs PV, SPI bao nhiêu — đây là thước đo chính xác nhất về tiến độ. Thiếu/vượt bao nhiêu tỷ so với kế hoạch tại thời điểm này. EV delta tuần này tăng/giảm so với tuần trước. (Chỉ viết mục này nếu có dữ liệu đơn giá — nếu SPI = — thì ghi "Chưa có dữ liệu đơn giá để tính EVM")
+Câu đầu tiên BẮT BUỘC: "Sản lượng tuần này: +[XU HƯỚNG TUẦN NÀY - lấy số EV delta]" — đây là con số quan trọng nhất BGĐ cần biết ngay. Sau đó: EV lũy kế vs PV, thiếu/vượt bao nhiêu tỷ, SPI = bao nhiêu nghĩa là gì. Xu hướng so với tuần trước tốt hay xấu. (Chỉ viết mục này nếu có dữ liệu đơn giá — nếu SPI = — thì ghi "Chưa có dữ liệu đơn giá để tính EVM")
 
 ## 3. CẢNH BÁO TIMELINE
 Hạng mục nào lệch nghiêm trọng? Nguy cơ trễ deadline? Mức: 🔴 Nguy hiểm / 🟡 Cần theo dõi / 🟢 Ổn.
