@@ -314,18 +314,18 @@ async function renderWeeklyPDF() {
       </div>
     </div>`
 
-    // S-Curve
+    // S-Curve — dùng lại allProgPDF đã query, 12 tuần cố định giống dashboard
     let scurveSvgHtml = ''
     try {
-      const { data: allProg } = await sb.from('task_progress').select('task_id,pct_complete,week_number,year').eq('project_id',proj.id).order('year').order('week_number').order('updated_at',{ascending:false})
-      if (allProg?.length && leafWithPrice.length > 0) {
-        const taskHist={}; allProg.forEach(p=>{if(!taskHist[p.task_id])taskHist[p.task_id]=[];taskHist[p.task_id].push(p)})
-        // Fix: dùng bestWk logic — nhất quán với sanluong.js/compare.js/dashboard.js
+      if (allProgPDF?.length && leafWithPrice.length > 0) {
+        const taskHist={}; allProgPDF.forEach(p=>{if(!taskHist[p.task_id])taskHist[p.task_id]=[];taskHist[p.task_id].push(p)})
         const getPct=(tid,wkn,yrn)=>{let b=null,bwk=-1;(taskHist[tid]||[]).forEach(p=>{if(p.year<yrn||(p.year===yrn&&p.week_number<=wkn)){if(p.week_number>bwk){bwk=p.week_number;b=p.pct_complete??0}}});return b??0}
-        const wkMap={}; allProg.forEach(p=>{const k=`${p.year}-${String(p.week_number).padStart(2,'0')}`;wkMap[k]={week:p.week_number,year:p.year}})
-        const wks=Object.keys(wkMap).sort().slice(-12), evArr=[], pvArr=[], lblArr=[]
-        wks.forEach(k=>{
-          const {week:wkn,year:yrn}=wkMap[k]; lblArr.push('T'+wkn)
+        // 12 tuần cố định từ tuần hiện tại — giống dashboard.js
+        const weeks12=[]
+        for(let i=11;i>=0;i--){let wkk=wk-i,yrr=yr;if(wkk<=0){wkk+=52;yrr--}weeks12.push({week:wkk,year:yrr})}
+        const wks=weeks12, evArr=[], pvArr=[], lblArr=[]
+        wks.forEach(({week:wkn,year:yrn})=>{
+          lblArr.push('T'+wkn)
           const ev=leafWithPrice.reduce((s,t)=>s+(t.unit_price||0)*(t.planned_quantity||1)*getPct(t.id,wkn,yrn)/100,0)
           const wkEnd=new Date(yrn,0,4); const dow=wkEnd.getDay()||7; wkEnd.setDate(wkEnd.getDate()-dow+1+(wkn-1)*7+6)
           const pv=leafWithPrice.reduce((s,t)=>{const cv=(t.unit_price||0)*(t.planned_quantity||1);const [sy,sm,sd]=(t.kh_start||'').split('-').map(Number);const [ey,em,ed]=(t.kh_finish||'').split('-').map(Number);if(!sy||!ey)return s;const st=new Date(sy,sm-1,sd),en=new Date(ey,em-1,ed);if(wkEnd<st)return s;if(wkEnd>=en)return s+cv;return s+cv*(wkEnd-st)/(en-st)},0)
