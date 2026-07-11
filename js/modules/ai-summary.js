@@ -181,24 +181,43 @@ PHÂN TÍCH SẢN LƯỢNG (EVM) — TUẦN ${week}:
     let velocityStr = ''
     let evDeltaWeek = null  // EV delta tuần này — tính từ task_progress
     try {
-      // Lấy EV tuần trước từ task_progress (nhất quán với sanluong.js)
+      // Query toàn bộ task_progress — tính EV tuần này VÀ tuần trước từ cùng nguồn
+      // Nhất quán hoàn toàn với sanluong.js (không dùng tasks.pct_complete)
+      const yr  = new Date().getFullYear()
       const lwn = week > 1 ? week - 1 : 52
-      const lwy = week > 1 ? new Date().getFullYear() : new Date().getFullYear() - 1
-      const { data: lpData } = await sb.from('task_progress')
-        .select('task_id, pct_complete, week_number')
+      const lwy = week > 1 ? yr : yr - 1
+
+      const { data: allProgAI } = await sb.from('task_progress')
+        .select('task_id, pct_complete, week_number, year')
         .eq('project_id', proj.id)
-        .lte('week_number', lwn).eq('year', lwy)
         .order('week_number', { ascending: false })
         .order('updated_at', { ascending: false })
 
       const leafWithPrice = leaf.filter(t => (t.unit_price||0) > 0)
-      if (lpData?.length && leafWithPrice.length > 0) {
-        // Lấy bản mới nhất per task (sort desc đã có)
-        const lm = {}
-        lpData.forEach(p => { if (!lm[p.task_id]) lm[p.task_id] = p.pct_complete || 0 })
-        const evLastWeek = leafWithPrice.reduce((s, t) =>
-          s + (t.unit_price||0) * (t.planned_quantity||1) * (lm[t.id]||0) / 100, 0)
-        evDeltaWeek = totalEV - evLastWeek
+
+      if (allProgAI?.length && leafWithPrice.length > 0) {
+        // Helper: lấy pct mới nhất <= tuần T (bestWk logic — giống sanluong.js)
+        const histMap = {}
+        allProgAI.forEach(p => {
+          if (!histMap[p.task_id]) histMap[p.task_id] = []
+          histMap[p.task_id].push(p)
+        })
+        function getPctAt(taskId, wk, yrr) {
+          const hist = histMap[taskId] || []
+          let best = null, bestWk = -1
+          hist.forEach(p => {
+            if (p.year < yrr || (p.year === yrr && p.week_number <= wk)) {
+              if (p.week_number > bestWk) { bestWk = p.week_number; best = p.pct_complete ?? 0 }
+            }
+          })
+          return best ?? 0
+        }
+        // EV tuần này và tuần trước từ cùng nguồn task_progress
+        const evThisDB = leafWithPrice.reduce((s, t) =>
+          s + (t.unit_price||0) * (t.planned_quantity||1) * getPctAt(t.id, week, yr) / 100, 0)
+        const evLastDB = leafWithPrice.reduce((s, t) =>
+          s + (t.unit_price||0) * (t.planned_quantity||1) * getPctAt(t.id, lwn, lwy) / 100, 0)
+        evDeltaWeek = evThisDB - evLastDB
       }
 
       // velocity % — từ ai_summaries tuần trước
