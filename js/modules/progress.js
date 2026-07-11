@@ -229,13 +229,32 @@ async function renderWeeklyPDF() {
       }, 0)
     }
     const spi = totalPV > 0 ? totalEV/totalPV : null
-    let evLastWeek = 0
+    // Tính evThisWeek từ task_progress — nhất quán với sanluong.js/dashboard.js
+    let evThisWeek = 0
     try {
       const lwn=wk>1?wk-1:52, lwy=wk>1?yr:yr-1
-      const { data: lp } = await sb.from('task_progress').select('task_id,pct_complete,week_number').eq('project_id',proj.id).lte('week_number',lwn).eq('year',lwy).order('week_number',{ascending:false}).order('updated_at',{ascending:false})
-      if (lp?.length) { const lm={}; lp.forEach(p=>{ if(!lm[p.task_id]) lm[p.task_id]=p.pct_complete||0 }); evLastWeek=leafWithPrice.reduce((s,t)=>s+(t.unit_price||0)*(t.planned_quantity||1)*(lm[t.id]||0)/100,0) }
+      const { data: allProgPDF } = await sb.from('task_progress')
+        .select('task_id,pct_complete,week_number,year')
+        .eq('project_id',proj.id)
+        .order('week_number',{ascending:false})
+        .order('updated_at',{ascending:false})
+      if (allProgPDF?.length && leafWithPrice.length > 0) {
+        const histPDF = {}
+        allProgPDF.forEach(p => { if(!histPDF[p.task_id]) histPDF[p.task_id]=[]; histPDF[p.task_id].push(p) })
+        const getPctPDF = (tid, wkn, yrn) => {
+          let best=null, bestWk=-1
+          ;(histPDF[tid]||[]).forEach(p => {
+            if (p.year < yrn || (p.year === yrn && p.week_number <= wkn)) {
+              if (p.week_number > bestWk) { bestWk=p.week_number; best=p.pct_complete??0 }
+            }
+          })
+          return best??0
+        }
+        const evNow  = leafWithPrice.reduce((s,t)=>s+(t.unit_price||0)*(t.planned_quantity||1)*getPctPDF(t.id,wk,yr)/100,0)
+        const evPrev = leafWithPrice.reduce((s,t)=>s+(t.unit_price||0)*(t.planned_quantity||1)*getPctPDF(t.id,lwn,lwy)/100,0)
+        evThisWeek = evNow - evPrev
+      }
     } catch(e) {}
-    const evThisWeek = totalEV - evLastWeek  // cho phép âm — nhất quán với sanluong.js
     const fmtM = v => { if(!v||v===0)return'—'; if(Math.abs(v)>=1e9)return(v/1e9).toFixed(1)+'tỷ'; if(Math.abs(v)>=1e6)return Math.round(v/1e6)+'tr'; return Math.round(v/1e3)+'k' }
 
     // ── 4 card mới ──────────────────────────────────────────
@@ -331,7 +350,7 @@ async function renderWeeklyPDF() {
         const yT=[0,.25,.5,.75,1].map(r=>{const y=PT+cH-r*cH;return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#E2E8F0" stroke-width="0.5"/><text x="${PL-4}" y="${y+3}" text-anchor="end" font-size="8" fill="#94A3B8">${fB(r*maxV)}</text>`}).join('')
         const xL=lblArr.map((l,i)=>`<text x="${xC(i)}" y="${H-5}" text-anchor="middle" font-size="9" fill="#64748B">${l}</text>`).join('')
         const spiV=pvArr[n-1]>0?evArr[n-1]/pvArr[n-1]:null,spiC=!spiV?'#64748B':spiV>=1?'#16A34A':spiV>=0.8?'#D97706':'#DC2626'
-        scurveSvgHtml=`<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;justify-content:space-between;align-items:center"><span>📈 BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN (S-CURVE)</span><span style="display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.9;align-items:center"><span>■ SL tuần</span><span>— Lũy kế TH: <strong>${fB(evArr[n-1]||0)}</strong></span><span style="color:#86EFAC">- - KH: <strong>${fB(pvArr[n-1]||0)}</strong></span>${spiV?`<span style="padding:1px 7px;border-radius:10px;background:${spiC};font-weight:700">SPI=${spiV.toFixed(2)}</span>`:''}</span></div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA"><svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">${yT}<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${PT+cH}" stroke="#CBD5E1" stroke-width="1"/>''/* HD line hidden */} ${bars}<polyline points="${pvPts}" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="8 3" opacity="1"/>${pvArr.map((v,i)=>{const isL=i===n-1;return`<circle cx="${xC(i)}" cy="${yC(v)}" r="${isL?4:2.5}" fill="#16A34A" opacity="1"/>${isL?`<text x="${xC(i)}" y="${yC(v)-10}" text-anchor="middle" font-size="10" fill="#16A34A" font-weight="700">${fB(v)}</text>`:""}`}).join('')}<polyline points="${evPts}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>${evArr.map((v,i)=>{const isL=i===n-1;return`<circle cx="${xC(i)}" cy="${yC(v)}" r="${isL?4:2.5}" fill="#D97706"/>${isL?`<text x="${xC(i)}" y="${yC(v)-8}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="700">${fB(v)}</text>`:''}`}).join('')}${xL}</svg></div></div>`
+        scurveSvgHtml=`<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;justify-content:space-between;align-items:center"><span>📈 BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN (S-CURVE)</span><span style="display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.9;align-items:center"><span>■ SL tuần</span><span>— Lũy kế TH: <strong>${fB(evArr[n-1]||0)}</strong></span><span style="color:#86EFAC">- - KH: <strong>${fB(pvArr[n-1]||0)}</strong></span>${spiV?`<span style="padding:1px 7px;border-radius:10px;background:${spiC};font-weight:700">SPI=${spiV.toFixed(2)}</span>`:''}</span></div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA"><svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">${yT}<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${PT+cH}" stroke="#CBD5E1" stroke-width="1"/> ${bars}<polyline points="${pvPts}" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="8 3" opacity="1"/>${pvArr.map((v,i)=>{const isL=i===n-1;return`<circle cx="${xC(i)}" cy="${yC(v)}" r="${isL?4:2.5}" fill="#16A34A" opacity="1"/>${isL?`<text x="${xC(i)}" y="${yC(v)-10}" text-anchor="middle" font-size="10" fill="#16A34A" font-weight="700">${fB(v)}</text>`:""}`}).join('')}<polyline points="${evPts}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>${evArr.map((v,i)=>{const isL=i===n-1;return`<circle cx="${xC(i)}" cy="${yC(v)}" r="${isL?4:2.5}" fill="#D97706"/>${isL?`<text x="${xC(i)}" y="${yC(v)-8}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="700">${fB(v)}</text>`:''}`}).join('')}${xL}</svg></div></div>`
       }
     } catch(e) { console.warn('S-curve:',e) }
 
