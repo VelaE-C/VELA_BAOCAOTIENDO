@@ -231,13 +231,15 @@ async function renderWeeklyPDF() {
     const spi = totalPV > 0 ? totalEV/totalPV : null
     // Tính evThisWeek từ task_progress — nhất quán với sanluong.js/dashboard.js
     let evThisWeek = 0
+    let allProgPDF = null  // declare ngoài try để S-curve dùng được
     try {
       const lwn=wk>1?wk-1:52, lwy=wk>1?yr:yr-1
-      const { data: allProgPDF } = await sb.from('task_progress')
+      const { data: _allProgPDF } = await sb.from('task_progress')
         .select('task_id,pct_complete,week_number,year')
         .eq('project_id',proj.id)
         .order('week_number',{ascending:false})
         .order('updated_at',{ascending:false})
+      allProgPDF = _allProgPDF  // assign ra outer scope cho S-curve dùng
       if (allProgPDF?.length && leafWithPrice.length > 0) {
         const histPDF = {}
         allProgPDF.forEach(p => { if(!histPDF[p.task_id]) histPDF[p.task_id]=[]; histPDF[p.task_id].push(p) })
@@ -416,29 +418,30 @@ async function renderWeeklyPDF() {
           `<text x="${xCsl(i)}" y="${Hsl-5}" text-anchor="middle" font-size="9" fill="#64748B">${lbl}</text>`
         ).join('')
 
-        scurveSvgHtml = `<div style="margin-bottom:14px">
-          <div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;justify-content:space-between;align-items:center">
-            <span>📈 BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN</span>
-            <span style="display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.9;align-items:center">
-              <span>■ SL tuần</span>
-              <span>— Lũy kế TH (EV): <strong>${fBsl(lastEVsl)}</strong></span>
-              <span style="color:#86EFAC">- - Kế hoạch (PV): <strong>${fBsl(lastPVsl)}</strong></span>
-              ${spiSL?`<span style="padding:1px 8px;border-radius:10px;background:${spiCSL};font-weight:700">SPI=${spiSL.toFixed(2)}</span>`:''}
-            </span>
-          </div>
-          <div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA">
-            <svg width="100%" viewBox="0 0 ${Wsl} ${Hsl}" style="overflow:visible">
-              ${yTicksSL}
-              <line x1="${PLsl}" y1="${PTsl}" x2="${PLsl}" y2="${PTsl+cHsl}" stroke="#CBD5E1" stroke-width="1"/>
-              ${barsSlHtml}
-              <polyline points="${pvPtsSL}" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-dasharray="8 3" opacity="1"/>
-              ${pvDotsSL}
-              <polyline points="${evPtsSL}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
-              ${evDotsSL}
-              ${xLabelsSL}
-            </svg>
-          </div>
-        </div>`
+        // Dùng string concat tránh nested backtick conflict với htmlContent template
+        const spiSpan = spiSL
+          ? '<span style="padding:1px 8px;border-radius:10px;background:' + spiCSL + ';font-weight:700">SPI=' + spiSL.toFixed(2) + '</span>'
+          : ''
+        scurveSvgHtml = '<div style="margin-bottom:14px">'
+          + '<div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;justify-content:space-between;align-items:center">'
+          + '<span>📈 BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN</span>'
+          + '<span style="display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.9;align-items:center">'
+          + '<span>■ SL tuần</span>'
+          + '<span>&#8212; Lũy kế TH (EV): <strong>' + fBsl(lastEVsl) + '</strong></span>'
+          + '<span style="color:#86EFAC">&#8212; &#8212; Kế hoạch (PV): <strong>' + fBsl(lastPVsl) + '</strong></span>'
+          + spiSpan
+          + '</span></div>'
+          + '<div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA">'
+          + '<svg width="100%" viewBox="0 0 ' + Wsl + ' ' + Hsl + '" style="overflow:visible">'
+          + yTicksSL
+          + '<line x1="' + PLsl + '" y1="' + PTsl + '" x2="' + PLsl + '" y2="' + (PTsl+cHsl) + '" stroke="#CBD5E1" stroke-width="1"/>'
+          + barsSlHtml
+          + '<polyline points="' + pvPtsSL + '" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-dasharray="8 3" opacity="1"/>'
+          + pvDotsSL
+          + '<polyline points="' + evPtsSL + '" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>'
+          + evDotsSL
+          + xLabelsSL
+          + '</svg></div></div>'
       }
     } catch(e) { console.warn('SL chart PDF:', e) }
 
