@@ -314,45 +314,133 @@ async function renderWeeklyPDF() {
       </div>
     </div>`
 
-    // S-Curve — dùng lại allProgPDF đã query, 12 tuần cố định giống dashboard
+    // ── BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN — copy logic từ dashboard.js ──
     let scurveSvgHtml = ''
     try {
       if (allProgPDF?.length && leafWithPrice.length > 0) {
-        const taskHist={}; allProgPDF.forEach(p=>{if(!taskHist[p.task_id])taskHist[p.task_id]=[];taskHist[p.task_id].push(p)})
-        const getPct=(tid,wkn,yrn)=>{let b=null,bwk=-1;(taskHist[tid]||[]).forEach(p=>{if(p.year<yrn||(p.year===yrn&&p.week_number<=wkn)){if(p.week_number>bwk){bwk=p.week_number;b=p.pct_complete??0}}});return b??0}
-        // 12 tuần cố định từ tuần hiện tại — giống dashboard.js
-        const weeks12=[]
-        for(let i=11;i>=0;i--){let wkk=wk-i,yrr=yr;if(wkk<=0){wkk+=52;yrr--}weeks12.push({week:wkk,year:yrr})}
-        const wks=weeks12, evArr=[], pvArr=[], lblArr=[]
-        wks.forEach(({week:wkn,year:yrn})=>{
-          lblArr.push('T'+wkn)
-          const ev=leafWithPrice.reduce((s,t)=>s+(t.unit_price||0)*(t.planned_quantity||1)*getPct(t.id,wkn,yrn)/100,0)
-          const wkEnd=new Date(yrn,0,4); const dow=wkEnd.getDay()||7; wkEnd.setDate(wkEnd.getDate()-dow+1+(wkn-1)*7+6)
-          const pv=leafWithPrice.reduce((s,t)=>{const cv=(t.unit_price||0)*(t.planned_quantity||1);const [sy,sm,sd]=(t.kh_start||'').split('-').map(Number);const [ey,em,ed]=(t.kh_finish||'').split('-').map(Number);if(!sy||!ey)return s;const st=new Date(sy,sm-1,sd),en=new Date(ey,em-1,ed);if(wkEnd<st)return s;if(wkEnd>=en)return s+cv;return s+cv*(wkEnd-st)/(en-st)},0)
-          evArr.push(ev);pvArr.push(pv)
+        const taskHistSL = {}
+        allProgPDF.forEach(p => {
+          if (!taskHistSL[p.task_id]) taskHistSL[p.task_id] = []
+          taskHistSL[p.task_id].push(p)
         })
-        const n=lblArr.length,W=860,H=180,PL=65,PR=16,PT=16,PB=38,cW=W-PL-PR,cH=H-PT-PB
-        const maxV=Math.max(...evArr,...pvArr,1)  // bỏ totalCV tránh scale quá lớn,xC=i=>PL+i*(cW/n)+cW/(n*2),yC=v=>PT+cH-Math.round(v/maxV*cH)
-        const fB=v=>{if(!v)return'0';if(v>=1e9)return(v/1e9).toFixed(1)+'tỷ';if(v>=1e6)return Math.round(v/1e6)+'tr';return Math.round(v/1e3)+'k'}
-        const barW=Math.max(10,Math.floor(cW/n)-8)
-        // Bars: delta EV tuần, cho phép âm
-        const bars=evArr.map((ev,i)=>{
-          const d=ev-(i>0?evArr[i-1]:0)
-          const isNeg=d<0, absD=Math.abs(d)
-          const h=Math.max(2,Math.round(absD/maxV*cH))
-          const x=PL+i*(cW/n)+(cW/n-barW)/2
-          const y=isNeg?PT+cH:PT+cH-h
-          const clr=isNeg?'#DC2626':'#2563EB'
-          return`<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="${clr}" rx="2" opacity="0.75"/>${d!==0?`<text x="${x+barW/2}" y="${PT+cH+13}" text-anchor="middle" font-size="9" fill="${clr}" font-weight="600">${isNeg?'-':''}${fB(absD)}</text>`:''}`
+        function getPctSL(taskId, wkn, yrn) {
+          const hist = taskHistSL[taskId] || []
+          let best = null, bestWk = -1
+          hist.forEach(p => {
+            if (p.year < yrn || (p.year === yrn && p.week_number <= wkn)) {
+              if (p.week_number > bestWk) { bestWk = p.week_number; best = p.pct_complete ?? 0 }
+            }
+          })
+          return best ?? 0
+        }
+        function weekToEndDateSL(wkn, yrn) {
+          const d = new Date(yrn, 0, 4)
+          const dow = d.getDay() || 7
+          d.setDate(d.getDate() - dow + 1 + (wkn - 1) * 7 + 6)
+          return d
+        }
+        // 12 tuần cố định
+        const weeks12 = []
+        for (let i = 11; i >= 0; i--) {
+          let wkk = wk - i, yrr = yr
+          if (wkk <= 0) { wkk += 52; yrr-- }
+          weeks12.push({ wkk, yrr, label: 'T' + wkk })
+        }
+        const slDeltas = [], slEV = [], slPV = [], slLabels = []
+        let prevEVsl = 0
+        weeks12.forEach(({ wkk, yrr, label }) => {
+          const ev = leafWithPrice.reduce((s, t) =>
+            s + (t.unit_price||0) * (t.planned_quantity||1) * getPctSL(t.id, wkk, yrr) / 100, 0)
+          const wkEnd = weekToEndDateSL(wkk, yrr)
+          const pv = leafWithPrice.reduce((s, t) => {
+            const cv = (t.unit_price||0) * (t.planned_quantity||1)
+            if (!cv) return s
+            const start = t.kh_start ? new Date(t.kh_start) : null
+            const finish = t.kh_finish ? new Date(t.kh_finish) : null
+            if (!start || !finish) return s
+            if (wkEnd < start) return s
+            if (wkEnd >= finish) return s + cv
+            return s + cv * (wkEnd - start) / (finish - start)
+          }, 0)
+          slDeltas.push(ev - prevEVsl)
+          slEV.push(ev)
+          slPV.push(pv)
+          slLabels.push(label)
+          prevEVsl = ev
+        })
+        const lastEVsl = slEV[slEV.length - 1] || 0
+        const lastPVsl = slPV[slPV.length - 1] || 0
+        const spiSL = lastPVsl > 0 ? (lastEVsl / lastPVsl) : null
+        const spiCSL = !spiSL ? '#64748B' : spiSL >= 1 ? '#16A34A' : spiSL >= 0.8 ? '#D97706' : '#DC2626'
+        const fBsl = v => { if(!v||v===0)return'0'; if(Math.abs(v)>=1e9)return(v/1e9).toFixed(1)+'tỷ'; if(Math.abs(v)>=1e6)return Math.round(v/1e6)+'tr'; return Math.round(v/1e3)+'k' }
+        const nsl = slLabels.length
+        const Wsl=860, Hsl=180, PLsl=65, PRsl=20, PTsl=20, PBsl=38
+        const cWsl = Wsl-PLsl-PRsl, cHsl = Hsl-PTsl-PBsl
+        const maxVsl = Math.max(...slEV, ...slPV, ...slDeltas.map(Math.abs), 1)
+        const barWsl = Math.max(10, Math.floor(cWsl/nsl) - 8)
+        const xCsl = i => PLsl + i*(cWsl/nsl) + cWsl/(nsl*2)
+        const yCsl = v => PTsl + cHsl - Math.round(v/maxVsl*cHsl)
+
+        const barsSlHtml = slDeltas.map((d, i) => {
+          const isNeg = d < 0, absD = Math.abs(d)
+          const h = Math.max(2, Math.round(absD/maxVsl*cHsl))
+          const x = PLsl + i*(cWsl/nsl) + (cWsl/nsl - barWsl)/2
+          const y = isNeg ? PTsl + cHsl : PTsl + cHsl - h
+          const clr = isNeg ? '#DC2626' : '#2563EB'
+          return `<rect x="${x}" y="${y}" width="${barWsl}" height="${h}" fill="${clr}" rx="2" opacity="0.8"/>
+            ${d!==0?`<text x="${x+barWsl/2}" y="${PTsl+cHsl+14}" text-anchor="middle" font-size="9" fill="${clr}" font-weight="600">${isNeg?'-':''}${fBsl(absD)}</text>`:''}`
         }).join('')
-        const evPts=evArr.map((v,i)=>`${xC(i)},${yC(v)}`).join(' '),pvPts=pvArr.map((v,i)=>`${xC(i)},${yC(v)}`).join(' ')
-        const hdY=totalCV>0?yC(totalCV):-1
-        const yT=[0,.25,.5,.75,1].map(r=>{const y=PT+cH-r*cH;return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#E2E8F0" stroke-width="0.5"/><text x="${PL-4}" y="${y+3}" text-anchor="end" font-size="8" fill="#94A3B8">${fB(r*maxV)}</text>`}).join('')
-        const xL=lblArr.map((l,i)=>`<text x="${xC(i)}" y="${H-5}" text-anchor="middle" font-size="9" fill="#64748B">${l}</text>`).join('')
-        const spiV=pvArr[n-1]>0?evArr[n-1]/pvArr[n-1]:null,spiC=!spiV?'#64748B':spiV>=1?'#16A34A':spiV>=0.8?'#D97706':'#DC2626'
-        scurveSvgHtml=`<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;justify-content:space-between;align-items:center"><span>📈 BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN (S-CURVE)</span><span style="display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.9;align-items:center"><span>■ SL tuần</span><span>— Lũy kế TH: <strong>${fB(evArr[n-1]||0)}</strong></span><span style="color:#86EFAC">- - KH: <strong>${fB(pvArr[n-1]||0)}</strong></span>${spiV?`<span style="padding:1px 7px;border-radius:10px;background:${spiC};font-weight:700">SPI=${spiV.toFixed(2)}</span>`:''}</span></div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA"><svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">${yT}<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${PT+cH}" stroke="#CBD5E1" stroke-width="1"/> ${bars}<polyline points="${pvPts}" fill="none" stroke="#16A34A" stroke-width="2" stroke-dasharray="8 3" opacity="1"/>${pvArr.map((v,i)=>{const isL=i===n-1;return`<circle cx="${xC(i)}" cy="${yC(v)}" r="${isL?4:2.5}" fill="#16A34A" opacity="1"/>${isL?`<text x="${xC(i)}" y="${yC(v)-10}" text-anchor="middle" font-size="10" fill="#16A34A" font-weight="700">${fB(v)}</text>`:""}`}).join('')}<polyline points="${evPts}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>${evArr.map((v,i)=>{const isL=i===n-1;return`<circle cx="${xC(i)}" cy="${yC(v)}" r="${isL?4:2.5}" fill="#D97706"/>${isL?`<text x="${xC(i)}" y="${yC(v)-8}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="700">${fB(v)}</text>`:''}`}).join('')}${xL}</svg></div></div>`
+
+        const evPtsSL = slEV.map((v,i) => `${xCsl(i)},${yCsl(v)}`).join(' ')
+        const pvPtsSL = slPV.map((v,i) => `${xCsl(i)},${yCsl(v)}`).join(' ')
+
+        const evDotsSL = slEV.map((v,i) => {
+          const isL = i===nsl-1
+          return `<circle cx="${xCsl(i)}" cy="${yCsl(v)}" r="${isL?4:2.5}" fill="#D97706"/>
+            ${isL?`<text x="${xCsl(i)}" y="${yCsl(v)-8}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="700">${fBsl(v)}</text>`:''}`
+        }).join('')
+
+        const pvDotsSL = slPV.map((v,i) => {
+          const isL = i===nsl-1
+          return `<circle cx="${xCsl(i)}" cy="${yCsl(v)}" r="${isL?5:3}" fill="#16A34A" opacity="1"/>
+            ${isL?`<text x="${xCsl(i)}" y="${yCsl(v)-10}" text-anchor="middle" font-size="10" fill="#16A34A" font-weight="700">${fBsl(v)}</text>`:''}`
+        }).join('')
+
+        const yTicksSL = [0,0.25,0.5,0.75,1].map(r => {
+          const y = PTsl + cHsl - r*cHsl
+          return `<line x1="${PLsl}" y1="${y}" x2="${Wsl-PRsl}" y2="${y}" stroke="#E2E8F0" stroke-width="0.5"/>
+            <text x="${PLsl-4}" y="${y+3}" text-anchor="end" font-size="8" fill="#94A3B8">${fBsl(r*maxVsl)}</text>`
+        }).join('')
+
+        const xLabelsSL = slLabels.map((lbl,i) =>
+          `<text x="${xCsl(i)}" y="${Hsl-5}" text-anchor="middle" font-size="9" fill="#64748B">${lbl}</text>`
+        ).join('')
+
+        scurveSvgHtml = `<div style="margin-bottom:14px">
+          <div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;justify-content:space-between;align-items:center">
+            <span>📈 BIỂU ĐỒ SẢN LƯỢNG 12 TUẦN</span>
+            <span style="display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.9;align-items:center">
+              <span>■ SL tuần</span>
+              <span>— Lũy kế TH (EV): <strong>${fBsl(lastEVsl)}</strong></span>
+              <span style="color:#86EFAC">- - Kế hoạch (PV): <strong>${fBsl(lastPVsl)}</strong></span>
+              ${spiSL?`<span style="padding:1px 8px;border-radius:10px;background:${spiCSL};font-weight:700">SPI=${spiSL.toFixed(2)}</span>`:''}
+            </span>
+          </div>
+          <div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA">
+            <svg width="100%" viewBox="0 0 ${Wsl} ${Hsl}" style="overflow:visible">
+              ${yTicksSL}
+              <line x1="${PLsl}" y1="${PTsl}" x2="${PLsl}" y2="${PTsl+cHsl}" stroke="#CBD5E1" stroke-width="1"/>
+              ${barsSlHtml}
+              <polyline points="${pvPtsSL}" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-dasharray="8 3" opacity="1"/>
+              ${pvDotsSL}
+              <polyline points="${evPtsSL}" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
+              ${evDotsSL}
+              ${xLabelsSL}
+            </svg>
+          </div>
+        </div>`
       }
-    } catch(e) { console.warn('S-curve:',e) }
+    } catch(e) { console.warn('SL chart PDF:', e) }
 
     // Bảng Tiến độ & SL (giống Dashboard/WBS)
     const summaries=tasks.filter(t=>t.is_summary&&t.outline_level<=3)
