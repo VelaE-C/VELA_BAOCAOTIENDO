@@ -311,27 +311,58 @@ async function openAddTaskToMilestone(milestoneId) {
     .select('task_id').eq('milestone_id', milestoneId)
   const assignedIds = new Set((existing || []).map(e => e.task_id))
 
-  // Chỉ hiện task lá (không phải summary)
-  const leafTasks = STATE.tasks.filter(t => !t.is_summary)
+  // Build breadcrumb path cho mỗi task lá: "Villa 1B > Kết cấu > Móng"
+  const taskMap = {}
+  STATE.tasks.forEach(t => { taskMap[t.wbs_code] = t })
 
-  const rows = leafTasks.map(t => {
+  function getBreadcrumb(task) {
+    const parts = (task.wbs_code || '').split('.')
+    const ancestors = []
+    for (let i = 1; i < parts.length; i++) {
+      const parentWbs = parts.slice(0, i).join('.')
+      const parent = taskMap[parentWbs]
+      if (parent && parent.is_summary) ancestors.push(parent.name)
+    }
+    return ancestors.join(' › ')
+  }
+
+  // Hiện tất cả task (cả cha lẫn con) để user thấy context
+  // Task cha: làm header nhóm (không tick được)
+  // Task lá: tick được
+  const rows = STATE.tasks.map(t => {
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
-    const checked = assignedIds.has(t.id) ? 'checked' : ''
-    const indent = Math.max(0, (t.outline_level - 1)) * 14
-    return `
-      <label style="display:flex;align-items:center;gap:10px;padding:7px 12px;
-        border-bottom:0.5px solid var(--gray2);cursor:pointer;
-        background:${assignedIds.has(t.id) ? 'var(--lblue)' : 'white'}"
-        onmouseover="this.style.background='var(--gray1)'"
-        onmouseout="this.style.background='${assignedIds.has(t.id) ? 'var(--lblue)' : 'white'}'">
-        <input type="checkbox" value="${t.id}" ${checked}
-          style="width:16px;height:16px;accent-color:var(--blue);flex-shrink:0">
-        <div style="padding-left:${indent}px;flex:1;min-width:0">
-          <div style="font-size:13px;color:var(--gray8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</div>
-          <div style="font-size:10px;color:var(--gray4)">${t.wbs_code || ''} · ${t.planned_quantity || '—'} ${t.unit || ''} · ${pct}%</div>
-        </div>
-        <span style="font-size:11px;font-weight:600;color:${pct===100?'#16A34A':pct>0?'#D97706':'#94A3B8'};flex-shrink:0">${pct}%</span>
-      </label>`
+    const isSummary = t.is_summary
+
+    if (isSummary) {
+      // Header nhóm — indent theo level
+      const indent = Math.max(0, (t.outline_level - 1)) * 16
+      const bg = t.outline_level === 1 ? '#1A2B4A' : t.outline_level === 2 ? '#2563EB' : '#EEF2FF'
+      const tc = t.outline_level <= 2 ? 'white' : 'var(--navy)'
+      return `<div style="padding:5px 12px 5px ${12+indent}px;background:${bg};font-size:11px;font-weight:700;color:${tc};border-bottom:0.5px solid rgba(255,255,255,.1)"
+        data-summary="1">${t.name}</div>`
+    }
+
+    // Task lá — có thể tick
+    const checked = assignedIds.has(t.id)
+    const indent = Math.max(0, (t.outline_level - 1)) * 16
+    const breadcrumb = getBreadcrumb(t)
+    const pctClr = pct===100 ? '#16A34A' : pct>0 ? '#D97706' : '#94A3B8'
+    const rowBg = checked ? '#EFF6FF' : 'white'
+
+    return `<label data-name="${t.name.toLowerCase()} ${breadcrumb.toLowerCase()}"
+      style="display:flex;align-items:center;gap:10px;padding:7px 12px 7px ${12+indent}px;
+        border-bottom:0.5px solid var(--gray2);cursor:pointer;background:${rowBg};transition:background .1s"
+      onmouseover="if(!this.querySelector('input').checked)this.style.background='#F8FAFC'"
+      onmouseout="this.style.background=this.querySelector('input').checked?'#EFF6FF':'white'">
+      <input type="checkbox" value="${t.id}" ${checked ? 'checked' : ''}
+        style="width:15px;height:15px;accent-color:var(--blue);flex-shrink:0;cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:var(--gray8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</div>
+        ${breadcrumb ? `<div style="font-size:10px;color:var(--gray4);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${breadcrumb}</div>` : ''}
+        <div style="font-size:10px;color:var(--gray4)">${t.wbs_code || ''} · ${t.planned_quantity || '—'} ${t.unit || ''}</div>
+      </div>
+      <span style="font-size:12px;font-weight:700;color:${pctClr};flex-shrink:0;min-width:32px;text-align:right">${pct}%</span>
+    </label>`
   }).join('')
 
   openModal('📋 Chọn task cho mốc', `
@@ -369,11 +400,33 @@ async function openAddTaskToMilestone(milestoneId) {
 }
 
 function filterMilestoneTasks(q) {
+  const lower = q.toLowerCase().trim()
+  const items = document.querySelectorAll('#task-list label, #task-list div[data-summary]')
+
+  if (!lower) {
+    // Reset — hiện tất cả
+    items.forEach(el => el.style.display = '')
+    return
+  }
+
+  // Ẩn/hiện label theo search
   const labels = document.querySelectorAll('#task-list label')
-  const lower = q.toLowerCase()
   labels.forEach(lbl => {
-    const text = lbl.textContent.toLowerCase()
-    lbl.style.display = text.includes(lower) ? '' : 'none'
+    const name = lbl.dataset.name || ''
+    lbl.style.display = name.includes(lower) ? '' : 'none'
+  })
+
+  // Ẩn header cha nếu không có task con nào visible bên dưới
+  const summaries = document.querySelectorAll('#task-list div[data-summary]')
+  summaries.forEach(div => {
+    // Tìm tất cả label anh em phía sau cho đến header kế tiếp
+    let el = div.nextElementSibling
+    let hasVisible = false
+    while (el && !el.dataset?.summary) {
+      if (el.tagName === 'LABEL' && el.style.display !== 'none') { hasVisible = true; break }
+      el = el.nextElementSibling
+    }
+    div.style.display = hasVisible ? '' : 'none'
   })
 }
 
