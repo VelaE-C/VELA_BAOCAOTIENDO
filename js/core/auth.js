@@ -115,7 +115,7 @@ function navigate(page) {
   const pages = {
     dashboard, wbs, photos, compare, gantt,
     importPage, users: usersPage, portfolio: portfolioPage,
-    payment: paymentPage, sanluong
+    payment: paymentPage, sanluong, milestone: milestonePage
   }
   const fn = pages[page === 'import' ? 'importPage' : page]
   if (fn) content.innerHTML = fn()
@@ -129,6 +129,7 @@ function navigate(page) {
   if (page === 'portfolio') initPortfolio()
   if (page === 'payment')   initPayment()
   if (page === 'sanluong')  loadSanLuong()
+  if (page === 'milestone') initMilestone()
 }
 
 // ═══════════════════════════════════════════════════════════
