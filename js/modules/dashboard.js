@@ -33,6 +33,15 @@ function dashboard() {
     <div id="dash-summary-table"></div>
   </div>
 
+  <!-- Các mốc tiến độ -->
+  <div class="card" id="dash-milestone-card" style="display:none;margin-bottom:16px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--gray2);display:flex;justify-content:space-between;align-items:center">
+      <div class="card-title" style="margin:0">🏁 Các mốc tiến độ</div>
+      <span style="font-size:11px;color:var(--gray4);cursor:pointer" onclick="navigate('milestone')">Xem chi tiết →</span>
+    </div>
+    <div id="dash-milestone-table"></div>
+  </div>
+
   <!-- Chart sản lượng tuần -->
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
@@ -131,6 +140,7 @@ async function loadDashboard() {
   document.getElementById('dash-summary-table').innerHTML = rows || '<div style="padding:20px;color:var(--gray4)">Không có dữ liệu</div>'
 
   loadFinanceData()
+  loadDashboardMilestone()
   loadDashboardSLChart()
   loadDashboardPhotos()
   loadAttendanceData()
@@ -426,6 +436,114 @@ async function loadAttendanceData() {
   } catch(e) {
     el.innerHTML = `<span style="color:var(--red);font-size:13px">Lỗi: ${e.message}</span>`
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// CÁC MỐC TIẾN ĐỘ — Dashboard (compact bảng ngang)
+// ═══════════════════════════════════════════════════════════
+async function loadDashboardMilestone() {
+  const card  = document.getElementById('dash-milestone-card')
+  const table = document.getElementById('dash-milestone-table')
+  if (!card || !table || !STATE.currentProject) return
+
+  // Load milestone groups
+  const { data: groups } = await sb
+    .from('milestone_groups')
+    .select('*')
+    .eq('project_id', STATE.currentProject.id)
+    .order('sort_order')
+
+  if (!groups?.length) { card.style.display = 'none'; return }
+
+  // Load task links
+  const { data: links } = await sb
+    .from('milestone_tasks')
+    .select('milestone_id, task_id')
+    .in('milestone_id', groups.map(g => g.id))
+
+  const linkMap = {}
+  ;(links || []).forEach(l => {
+    if (!linkMap[l.milestone_id]) linkMap[l.milestone_id] = []
+    linkMap[l.milestone_id].push(l.task_id)
+  })
+
+  const fmtQty = v => Number.isInteger(v) ? v : parseFloat(v.toFixed(1))
+
+  const rows = groups.map(g => {
+    const taskIds = linkMap[g.id] || []
+    const tasks   = STATE.tasks.filter(t => taskIds.includes(t.id))
+    const unit    = g.unit || 'căn'
+
+    if (!tasks.length) {
+      return `<tr style="border-bottom:0.5px solid var(--gray2)">
+        <td style="padding:10px 14px;font-size:13px;font-weight:600;color:var(--gray7);width:200px">${g.name}</td>
+        <td colspan="4" style="padding:10px 14px;font-size:12px;color:var(--gray4)">Chưa có task — <span style="color:var(--blue);cursor:pointer" onclick="navigate('milestone')">Thêm task</span></td>
+      </tr>`
+    }
+
+    let doneQty = 0, inProgressQty = 0, totalQty = 0
+    tasks.forEach(t => {
+      const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
+      const qty = t.planned_quantity || 1
+      totalQty += qty
+      if (pct === 100) doneQty += qty
+      else if (pct > 0) inProgressQty += qty * pct / 100
+    })
+
+    const donePct  = totalQty > 0 ? Math.round(doneQty / totalQty * 100) : 0
+    const barColor = donePct === 100 ? '#16A34A' : donePct >= 60 ? '#0D9488' : donePct >= 30 ? '#D97706' : '#2563EB'
+    const notStartedQty = Math.max(0, totalQty - doneQty - inProgressQty)
+
+    return `<tr style="border-bottom:0.5px solid var(--gray2)" onmouseover="this.style.background='var(--gray1)'" onmouseout="this.style.background='white'">
+      <!-- Tên mốc -->
+      <td style="padding:10px 14px;font-size:13px;font-weight:600;color:var(--gray8);width:180px;white-space:nowrap">${g.name}</td>
+      <!-- Progress bar + % -->
+      <td style="padding:10px 14px;min-width:160px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:7px;background:var(--gray2);border-radius:4px;overflow:hidden">
+            <div style="width:${donePct}%;height:100%;background:${barColor};border-radius:4px;transition:width .4s"></div>
+          </div>
+          <span style="font-size:12px;font-weight:700;color:${barColor};width:34px;text-align:right;flex-shrink:0">${donePct}%</span>
+        </div>
+      </td>
+      <!-- Xong -->
+      <td style="padding:10px 10px;text-align:center;white-space:nowrap">
+        <span style="font-size:13px;font-weight:700;color:#16A34A">${fmtQty(doneQty)}</span>
+        <span style="font-size:10px;color:var(--gray4)"> / ${fmtQty(totalQty)} ${unit}</span>
+        <div style="font-size:10px;color:#16A34A">✅ xong</div>
+      </td>
+      <!-- Đang làm -->
+      <td style="padding:10px 10px;text-align:center;white-space:nowrap">
+        <span style="font-size:13px;font-weight:700;color:#D97706">${fmtQty(inProgressQty)}</span>
+        <span style="font-size:10px;color:var(--gray4)"> ${unit}</span>
+        <div style="font-size:10px;color:#D97706">⚙️ đang làm</div>
+      </td>
+      <!-- Chưa bắt đầu -->
+      <td style="padding:10px 10px;text-align:center;white-space:nowrap">
+        <span style="font-size:13px;font-weight:700;color:var(--gray4)">${fmtQty(notStartedQty)}</span>
+        <span style="font-size:10px;color:var(--gray4)"> ${unit}</span>
+        <div style="font-size:10px;color:var(--gray4)">○ chưa bắt đầu</div>
+      </td>
+    </tr>`
+  }).join('')
+
+  table.innerHTML = `<div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="background:var(--gray1);font-size:11px;color:var(--gray5)">
+          <th style="padding:7px 14px;text-align:left;font-weight:600">Mốc công việc</th>
+          <th style="padding:7px 14px;text-align:left;font-weight:600;min-width:180px">Tiến độ</th>
+          <th style="padding:7px 10px;text-align:center;font-weight:600">✅ Xong</th>
+          <th style="padding:7px 10px;text-align:center;font-weight:600">⚙️ Đang làm</th>
+          <th style="padding:7px 10px;text-align:center;font-weight:600">○ Chưa bắt đầu</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`
+
+  card.style.display = 'block'
 }
 
 // ═══════════════════════════════════════════════════════════
