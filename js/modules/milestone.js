@@ -27,6 +27,14 @@ async function loadMilestoneData() {
   const el = document.getElementById('milestone-content')
   if (!el || !STATE.currentProject) return
 
+  // Inject mobile CSS
+  if (!document.getElementById('ms-mobile-style')) {
+    const style = document.createElement('style')
+    style.id = 'ms-mobile-style'
+    style.textContent = '@media (max-width:1023px) { .ms-hide-mobile { display:none !important; } }'
+    document.head.appendChild(style)
+  }
+
   const projId = STATE.currentProject.id
 
   // Load milestone groups
@@ -106,7 +114,10 @@ function renderMilestoneCard(group, taskIds) {
   const taskRows = tasks.length > 0 ? tasks.map(t => {
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
     const qty = t.planned_quantity || 1
-    const qtyDone = Math.round(qty * pct / 100 * 100) / 100
+    // Dùng actual_quantity nếu có, không thì tính từ pct (làm tròn số nguyên)
+    const qtyDone = t.actual_quantity != null && t.actual_quantity > 0
+      ? t.actual_quantity
+      : Math.round(qty * pct / 100)
     const barColor = pct === 100 ? '#16A34A' : pct > 0 ? '#2563EB' : '#E2E8F0'
     const status = pct === 100
       ? '<span style="color:#16A34A;font-weight:600;font-size:11px">✅ Xong</span>'
@@ -117,8 +128,8 @@ function renderMilestoneCard(group, taskIds) {
     return `
       <tr style="border-bottom:0.5px solid var(--gray2)">
         <td style="padding:7px 10px;font-size:12px;color:var(--gray7);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.name}">${t.name}</td>
-        <td style="padding:7px 8px;font-size:11px;color:var(--gray4);white-space:nowrap">${t.wbs_code || '—'}</td>
-        <td style="padding:7px 8px;min-width:100px">
+        <td class="ms-hide-mobile" style="padding:7px 8px;font-size:11px;color:var(--gray4);white-space:nowrap">${t.wbs_code || '—'}</td>
+        <td style="padding:7px 8px;min-width:80px">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:5px;background:var(--gray2);border-radius:3px;overflow:hidden">
               <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px"></div>
@@ -126,7 +137,7 @@ function renderMilestoneCard(group, taskIds) {
             <span style="font-size:11px;font-weight:700;color:${barColor};width:28px;text-align:right">${pct}%</span>
           </div>
         </td>
-        <td style="padding:7px 8px;text-align:center;font-size:12px">${qtyDone > 0 ? qtyDone : '—'} / ${qty} ${t.unit || unit}</td>
+        <td class="ms-hide-mobile" style="padding:7px 8px;text-align:center;font-size:12px">${qtyDone > 0 ? qtyDone : '—'} / ${qty} ${t.unit || unit}</td>
         <td style="padding:7px 8px;text-align:center">${status}</td>
         <td style="padding:7px 8px;text-align:center">
           <button onclick="removeMilestoneTask('${group.id}','${t.id}')"
@@ -198,9 +209,9 @@ function renderMilestoneCard(group, taskIds) {
         <thead>
           <tr style="background:var(--gray1);font-size:11px;color:var(--gray5)">
             <th style="padding:7px 10px;text-align:left;font-weight:600">Công tác / Task</th>
-            <th style="padding:7px 8px;text-align:left;font-weight:600">WBS</th>
-            <th style="padding:7px 8px;text-align:left;font-weight:600;min-width:120px">Tiến độ</th>
-            <th style="padding:7px 8px;text-align:center;font-weight:600">KL TH / KH</th>
+            <th class="ms-hide-mobile" style="padding:7px 8px;text-align:left;font-weight:600">WBS</th>
+            <th style="padding:7px 8px;text-align:left;font-weight:600;min-width:100px">Tiến độ</th>
+            <th class="ms-hide-mobile" style="padding:7px 8px;text-align:center;font-weight:600">KL TH / KH</th>
             <th style="padding:7px 8px;text-align:center;font-weight:600">Trạng thái</th>
             <th style="padding:7px 8px;text-align:center;font-weight:600"></th>
           </tr>
