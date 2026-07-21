@@ -161,6 +161,13 @@ function renderMilestoneCard(group, taskIds) {
           style="background:rgba(255,255,255,.15);color:white;border:1px solid rgba(255,255,255,.3);font-size:12px">
           + Chọn task
         </button>
+        <button onclick="moveMilestone('${group.id}','up')"
+          style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:18px;padding:2px 6px;line-height:1"
+          title="Dời lên">↑</button>
+        <button onclick="moveMilestone('${group.id}','down')"
+          style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:18px;padding:2px 6px;line-height:1"
+          title="Dời xuống">↓</button>
+        <div style="width:1px;height:16px;background:rgba(255,255,255,.2);margin:0 4px;display:inline-block"></div>
         <button onclick="openEditMilestoneModal('${group.id}','${group.name.replace(/'/g,"\\'")}','${(group.description||'').replace(/'/g,"\\'")}','${group.unit||''}')"
           style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:14px;padding:4px 8px"
           title="Sửa mốc">✏️</button>
@@ -311,6 +318,35 @@ async function updateMilestoneGroup(id) {
   if (error) { toast('Lỗi: ' + error.message, 'error'); return }
   closeModal()
   toast('Đã cập nhật mốc', 'success')
+  await loadMilestoneData()
+}
+
+async function moveMilestone(id, direction) {
+  // Load danh sách hiện tại theo sort_order
+  const { data: groups } = await sb
+    .from('milestone_groups')
+    .select('id, sort_order')
+    .eq('project_id', STATE.currentProject.id)
+    .order('sort_order')
+
+  if (!groups?.length) return
+
+  const idx = groups.findIndex(g => g.id === id)
+  if (idx < 0) return
+  if (direction === 'up'   && idx === 0) return
+  if (direction === 'down' && idx === groups.length - 1) return
+
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+  const curr = groups[idx]
+  const swap = groups[swapIdx]
+
+  // Hoán đổi sort_order
+  loading(true, 'Đang sắp xếp...')
+  await Promise.all([
+    sb.from('milestone_groups').update({ sort_order: swap.sort_order }).eq('id', curr.id),
+    sb.from('milestone_groups').update({ sort_order: curr.sort_order }).eq('id', swap.id),
+  ])
+  loading(false)
   await loadMilestoneData()
 }
 
