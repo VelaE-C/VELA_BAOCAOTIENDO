@@ -70,19 +70,17 @@ function renderMilestoneCard(group, taskIds) {
   const tasks = STATE.tasks.filter(t => taskIds.includes(t.id))
 
   // Tính số liệu theo KL thực tế (planned_quantity × pct)
-  let doneQty = 0, inProgressQty = 0, notStartedQty = 0, totalQty = 0
-  let doneCnt = 0, inProgressCnt = 0, notStartedCnt = 0
+  let doneQty = 0, inProgressQty = 0, totalQty = 0
 
   tasks.forEach(t => {
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
     const qty = t.planned_quantity || 1
     totalQty += qty
-    if (pct === 100) { doneQty += qty; doneCnt++ }
-    else if (pct > 0) { inProgressQty += qty * pct / 100; inProgressCnt++ }
-    else notStartedCnt++
+    if (pct === 100) doneQty += qty
+    else if (pct > 0) inProgressQty += qty * pct / 100
   })
 
-  const notStartedQty = totalQty - doneQty - inProgressQty
+  const notStartedQty = Math.max(0, totalQty - doneQty - inProgressQty)
   const donePct = totalQty > 0 ? Math.round(doneQty / totalQty * 100) : 0
   const unit = group.unit || 'căn'
   // Làm tròn đẹp
