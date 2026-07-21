@@ -516,14 +516,14 @@ async function loadDashboardMilestone() {
         <span style="font-size:10px;color:var(--gray4)"> / ${fmtQty(totalQty)} ${unit}</span>
         <div style="font-size:10px;color:#16A34A">✅ đã thực hiện</div>
       </td>
-      <!-- Đang dở -->
-      <td style="padding:10px 10px;text-align:center;white-space:nowrap">
+      <!-- Đang dở — ẩn trên mobile -->
+      <td style="padding:10px 10px;text-align:center;white-space:nowrap;display:var(--dash-hide-mobile)">
         <span style="font-size:13px;font-weight:700;color:#D97706">${inProgressCnt}</span>
         <span style="font-size:10px;color:var(--gray4)"> task</span>
         <div style="font-size:10px;color:#D97706">⚙️ đang dở</div>
       </td>
-      <!-- Chưa bắt đầu -->
-      <td style="padding:10px 10px;text-align:center;white-space:nowrap">
+      <!-- Chưa bắt đầu — ẩn trên mobile -->
+      <td style="padding:10px 10px;text-align:center;white-space:nowrap;display:var(--dash-hide-mobile)">
         <span style="font-size:13px;font-weight:700;color:var(--gray4)">${fmtQty(notStartedQty)}</span>
         <span style="font-size:10px;color:var(--gray4)"> ${unit}</span>
         <div style="font-size:10px;color:var(--gray4)">○ chưa bắt đầu</div>
@@ -531,15 +531,19 @@ async function loadDashboardMilestone() {
     </tr>`
   }).join('')
 
-  table.innerHTML = `<div style="overflow-x:auto">
+  const isMobDash = window.innerWidth < 1024
+  const dashHideMobile = isMobDash ? 'none' : 'table-cell'
+  // Inject CSS var vào document
+  document.documentElement.style.setProperty('--dash-hide-mobile', dashHideMobile)
+  table.innerHTML = `<div style="overflow-x:hidden">
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="background:var(--gray1);font-size:11px;color:var(--gray5)">
           <th style="padding:7px 14px;text-align:left;font-weight:600">Mốc công việc</th>
-          <th style="padding:7px 14px;text-align:left;font-weight:600;min-width:180px">Tiến độ</th>
+          <th style="padding:7px 14px;text-align:left;font-weight:600;min-width:120px">Tiến độ</th>
           <th style="padding:7px 10px;text-align:center;font-weight:600">✅ Đã thực hiện</th>
-          <th style="padding:7px 10px;text-align:center;font-weight:600">⚙️ Đang dở</th>
-          <th style="padding:7px 10px;text-align:center;font-weight:600">○ Chưa bắt đầu</th>
+          <th style="padding:7px 10px;text-align:center;font-weight:600;display:var(--dash-hide-mobile)">⚙️ Đang dở</th>
+          <th style="padding:7px 10px;text-align:center;font-weight:600;display:var(--dash-hide-mobile)">○ Chưa bắt đầu</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
