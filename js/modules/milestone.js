@@ -75,12 +75,20 @@ function renderMilestoneCard(group, taskIds) {
   tasks.forEach(t => {
     const pct    = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
     const qty    = t.planned_quantity || 1
-    // Ưu tiên actual_quantity (KL BCH đã nhập), fallback về Math.round(qty × pct/100)
-    const actual = t.actual_quantity != null
-      ? t.actual_quantity
-      : Math.round(qty * pct / 100)
-    console.log('[Milestone]', t.wbs_code, t.name, '| planned:', qty, '| actual_qty:', t.actual_quantity, '| pct:', pct, '| used:', actual)
-    totalQty    += qty
+
+    let actual
+    if (t.actual_quantity != null && t.actual_quantity > 0) {
+      // BCH đã nhập KL thực tế → dùng trực tiếp (16 căn, không chia %)
+      actual = t.actual_quantity
+    } else if (t.unit && t.unit !== '%' && qty > 1) {
+      // Có đơn vị KL nhưng chưa nhập actual → tính từ pct, làm tròn số nguyên
+      actual = Math.round(qty * pct / 100)
+    } else {
+      // Đơn vị % hoặc không có KL → không có ý nghĩa số lẻ
+      actual = Math.round(qty * pct / 100)
+    }
+
+    totalQty     += qty
     completedQty += actual
     if (pct === 0) notStartedQty += qty
   })
