@@ -516,12 +516,6 @@ async function loadDashboardMilestone() {
         <span style="font-size:10px;color:var(--gray4)"> / ${fmtQty(totalQty)} ${unit}</span>
         <div style="font-size:10px;color:#16A34A">✅ đã thực hiện</div>
       </td>
-      <!-- Đang dở — ẩn trên mobile -->
-      <td style="padding:10px 10px;text-align:center;white-space:nowrap;display:var(--dash-hide-mobile)">
-        <span style="font-size:13px;font-weight:700;color:#D97706">${inProgressCnt}</span>
-        <span style="font-size:10px;color:var(--gray4)"> task</span>
-        <div style="font-size:10px;color:#D97706">⚙️ đang dở</div>
-      </td>
       <!-- Chưa bắt đầu — ẩn trên mobile -->
       <td style="padding:10px 10px;text-align:center;white-space:nowrap;display:var(--dash-hide-mobile)">
         <span style="font-size:13px;font-weight:700;color:var(--gray4)">${fmtQty(notStartedQty)}</span>
@@ -542,7 +536,6 @@ async function loadDashboardMilestone() {
           <th style="padding:7px 14px;text-align:left;font-weight:600">Mốc công việc</th>
           <th style="padding:7px 14px;text-align:left;font-weight:600;min-width:120px">Tiến độ</th>
           <th style="padding:7px 10px;text-align:center;font-weight:600">✅ Đã thực hiện</th>
-          <th style="padding:7px 10px;text-align:center;font-weight:600;display:var(--dash-hide-mobile)">⚙️ Đang dở</th>
           <th style="padding:7px 10px;text-align:center;font-weight:600;display:var(--dash-hide-mobile)">○ Chưa bắt đầu</th>
         </tr>
       </thead>
