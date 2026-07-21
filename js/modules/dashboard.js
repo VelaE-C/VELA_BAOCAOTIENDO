@@ -482,18 +482,21 @@ async function loadDashboardMilestone() {
       </tr>`
     }
 
-    let doneQty = 0, inProgressQty = 0, totalQty = 0
+    let completedQty = 0, notStartedQty = 0, totalQty = 0, inProgressCnt = 0
     tasks.forEach(t => {
-      const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
-      const qty = t.planned_quantity || 1
+      const pct    = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
+      const qty    = t.planned_quantity || 1
+      const actual = t.actual_quantity != null
+        ? t.actual_quantity
+        : Math.round(qty * pct / 100)
       totalQty += qty
-      if (pct === 100) doneQty += qty
-      else if (pct > 0) inProgressQty += qty * pct / 100
+      completedQty += actual
+      if (pct > 0 && pct < 100) inProgressCnt++
+      if (pct === 0) notStartedQty += qty
     })
 
-    const donePct  = totalQty > 0 ? Math.round(doneQty / totalQty * 100) : 0
+    const donePct  = totalQty > 0 ? Math.round(completedQty / totalQty * 100) : 0
     const barColor = donePct === 100 ? '#16A34A' : donePct >= 60 ? '#0D9488' : donePct >= 30 ? '#D97706' : '#2563EB'
-    const notStartedQty = Math.max(0, totalQty - doneQty - inProgressQty)
 
     return `<tr style="border-bottom:0.5px solid var(--gray2)" onmouseover="this.style.background='var(--gray1)'" onmouseout="this.style.background='white'">
       <!-- Tên mốc -->
@@ -507,17 +510,17 @@ async function loadDashboardMilestone() {
           <span style="font-size:12px;font-weight:700;color:${barColor};width:34px;text-align:right;flex-shrink:0">${donePct}%</span>
         </div>
       </td>
-      <!-- Xong -->
+      <!-- Đã thực hiện -->
       <td style="padding:10px 10px;text-align:center;white-space:nowrap">
-        <span style="font-size:13px;font-weight:700;color:#16A34A">${fmtQty(doneQty)}</span>
+        <span style="font-size:13px;font-weight:700;color:#16A34A">${fmtQty(completedQty)}</span>
         <span style="font-size:10px;color:var(--gray4)"> / ${fmtQty(totalQty)} ${unit}</span>
-        <div style="font-size:10px;color:#16A34A">✅ xong</div>
+        <div style="font-size:10px;color:#16A34A">✅ đã thực hiện</div>
       </td>
-      <!-- Đang làm -->
+      <!-- Đang dở -->
       <td style="padding:10px 10px;text-align:center;white-space:nowrap">
-        <span style="font-size:13px;font-weight:700;color:#D97706">${fmtQty(inProgressQty)}</span>
-        <span style="font-size:10px;color:var(--gray4)"> ${unit}</span>
-        <div style="font-size:10px;color:#D97706">⚙️ đang làm</div>
+        <span style="font-size:13px;font-weight:700;color:#D97706">${inProgressCnt}</span>
+        <span style="font-size:10px;color:var(--gray4)"> task</span>
+        <div style="font-size:10px;color:#D97706">⚙️ đang dở</div>
       </td>
       <!-- Chưa bắt đầu -->
       <td style="padding:10px 10px;text-align:center;white-space:nowrap">
@@ -534,8 +537,8 @@ async function loadDashboardMilestone() {
         <tr style="background:var(--gray1);font-size:11px;color:var(--gray5)">
           <th style="padding:7px 14px;text-align:left;font-weight:600">Mốc công việc</th>
           <th style="padding:7px 14px;text-align:left;font-weight:600;min-width:180px">Tiến độ</th>
-          <th style="padding:7px 10px;text-align:center;font-weight:600">✅ Xong</th>
-          <th style="padding:7px 10px;text-align:center;font-weight:600">⚙️ Đang làm</th>
+          <th style="padding:7px 10px;text-align:center;font-weight:600">✅ Đã thực hiện</th>
+          <th style="padding:7px 10px;text-align:center;font-weight:600">⚙️ Đang dở</th>
           <th style="padding:7px 10px;text-align:center;font-weight:600">○ Chưa bắt đầu</th>
         </tr>
       </thead>
