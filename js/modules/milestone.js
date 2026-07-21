@@ -69,21 +69,24 @@ async function loadMilestoneData() {
 function renderMilestoneCard(group, taskIds) {
   const tasks = STATE.tasks.filter(t => taskIds.includes(t.id))
 
-  // Tính số liệu
-  let done = 0, inProgress = 0, notStarted = 0, totalQty = 0, doneQty = 0
+  // Tính số liệu theo KL thực tế (planned_quantity × pct)
+  let doneQty = 0, inProgressQty = 0, notStartedQty = 0, totalQty = 0
+  let doneCnt = 0, inProgressCnt = 0, notStartedCnt = 0
 
   tasks.forEach(t => {
     const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete || 0)
     const qty = t.planned_quantity || 1
     totalQty += qty
-    if (pct === 100) { done++; doneQty += qty }
-    else if (pct > 0) inProgress++
-    else notStarted++
+    if (pct === 100) { doneQty += qty; doneCnt++ }
+    else if (pct > 0) { inProgressQty += qty * pct / 100; inProgressCnt++ }
+    else notStartedCnt++
   })
 
-  const total = tasks.length
-  const donePct = total > 0 ? Math.round(done / total * 100) : 0
-  const unit = group.unit || 'task'
+  const notStartedQty = totalQty - doneQty - inProgressQty
+  const donePct = totalQty > 0 ? Math.round(doneQty / totalQty * 100) : 0
+  const unit = group.unit || 'căn'
+  // Làm tròn đẹp
+  const fmtQty = v => Number.isInteger(v) ? v : parseFloat(v.toFixed(1))
 
   // Màu theo % hoàn thành
   const color = donePct === 100 ? '#16A34A' : donePct >= 60 ? '#0D9488' : donePct >= 30 ? '#D97706' : '#2563EB'
@@ -157,19 +160,19 @@ function renderMilestoneCard(group, taskIds) {
       <!-- Stats -->
       <div style="display:flex;gap:16px;flex-wrap:wrap">
         <div style="text-align:center">
-          <div style="font-size:18px;font-weight:700;color:#16A34A">${done}</div>
-          <div style="font-size:10px;color:var(--gray4)">✅ Xong</div>
+          <div style="font-size:18px;font-weight:700;color:#16A34A">${fmtQty(doneQty)}</div>
+          <div style="font-size:10px;color:var(--gray4)">✅ Xong (${unit})</div>
         </div>
         <div style="text-align:center">
-          <div style="font-size:18px;font-weight:700;color:#D97706">${inProgress}</div>
-          <div style="font-size:10px;color:var(--gray4)">⚙️ Đang làm</div>
+          <div style="font-size:18px;font-weight:700;color:#D97706">${fmtQty(inProgressQty)}</div>
+          <div style="font-size:10px;color:var(--gray4)">⚙️ Đang làm (${unit})</div>
         </div>
         <div style="text-align:center">
-          <div style="font-size:18px;font-weight:700;color:var(--gray4)">${notStarted}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--gray4)">${fmtQty(Math.max(0, notStartedQty))}</div>
           <div style="font-size:10px;color:var(--gray4)">○ Chưa bắt đầu</div>
         </div>
         <div style="text-align:center">
-          <div style="font-size:18px;font-weight:700;color:var(--navy)">${total}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--navy)">${fmtQty(totalQty)}</div>
           <div style="font-size:10px;color:var(--gray4)">Tổng ${unit}</div>
         </div>
       </div>
@@ -178,7 +181,7 @@ function renderMilestoneCard(group, taskIds) {
         <div style="height:8px;background:var(--gray2);border-radius:4px;overflow:hidden;margin-bottom:4px">
           <div style="height:100%;width:${donePct}%;background:${color};border-radius:4px;transition:width .4s"></div>
         </div>
-        <div style="font-size:10px;color:var(--gray4)">${done}/${total} ${unit} hoàn thành</div>
+        <div style="font-size:10px;color:var(--gray4)">${fmtQty(doneQty)}/${fmtQty(totalQty)} ${unit} hoàn thành</div>
       </div>
     </div>
 
