@@ -491,7 +491,68 @@ async function renderWeeklyPDF() {
     let attendanceHtml=''
     if(STATE._attendanceData?.history?.length){const hist=STATE._attendanceData.history,avgCN=STATE._attendanceData.avgCN||0,maxCN=Math.max(...hist.map(h=>h.cn_proj||0),1);const W2=700,H2=150,P2=36,bA=W2-P2-10,sH=H2-44,bW2=Math.max(8,Math.floor(bA/hist.length)-4);const aY=H2-32-Math.round((avgCN/maxCN)*sH);const b3=hist.map((d,i)=>{const cn=d.cn_proj||0,h2=Math.max(4,Math.round((cn/maxCN)*sH)),x=P2+i*(bA/hist.length),y=H2-32-h2;const dt=new Date(d.report_date),lbl=`${dt.getDate()}/${dt.getMonth()+1}`,dow=['CN','T2','T3','T4','T5','T6','T7'][dt.getDay()];const c=cn>avgCN?'#16A34A':cn<avgCN*0.8?'#DC2626':'#60A5FA';return`<rect x="${x}" y="${y}" width="${bW2}" height="${h2}" fill="${c}" rx="2" opacity=".85"/><text x="${x+bW2/2}" y="${y-3}" text-anchor="middle" font-size="8" fill="#334155">${cn}</text><text x="${x+bW2/2}" y="${H2-16}" text-anchor="middle" font-size="8" fill="#64748B">${lbl}</text><text x="${x+bW2/2}" y="${H2-6}" text-anchor="middle" font-size="7" fill="#94A3B8">${dow}</text>`}).join('');attendanceHtml=`<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">👷 QUÂN SỐ CÔNG NHÂN 30 NGÀY GẦN NHẤT</div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:10px;border-radius:0 0 4px 4px;background:#FAFAFA"><svg width="100%" viewBox="0 0 ${W2} ${H2}" style="overflow:visible"><line x1="${P2}" y1="${H2-32}" x2="${W2-10}" y2="${H2-32}" stroke="#E2E8F0" stroke-width="0.5"/><line x1="${P2}" y1="${aY}" x2="${W2-10}" y2="${aY}" stroke="#D97706" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/><text x="${W2-8}" y="${aY+4}" font-size="8" fill="#D97706" font-weight="600">TB</text>${b3}</svg><div style="font-size:11px;margin-top:4px">TB 30 ngày: <strong style="color:#2563EB">${avgCN}</strong> CN/ngày</div></div></div>`}
 
-    const htmlContent=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI",Arial,sans-serif}body{background:white;width:900px}</style></head><body><div id="pdf-content" style="width:900px;background:white"><div style="background:#1A2B4A;padding:14px 24px;display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:12px"><img src="${LOGO_URL}" style="height:44px;width:auto" crossorigin="anonymous" onerror="this.style.display='none'"><div><div style="color:#F97316;font-size:11px;letter-spacing:.08em">PHÒNG KTTC — VELAE&C</div></div></div><div style="text-align:right"><div style="color:white;font-size:20px;font-weight:700">BÁO CÁO TIẾN ĐỘ THI CÔNG</div><div style="color:rgba(255,255,255,.8);font-size:13px;margin-top:3px">${proj.name}</div><div style="color:rgba(255,255,255,.65);font-size:11px;margin-top:2px">Tuần ${wk}/${yr} | Ngày lập: ${today}</div></div></div><div style="padding:14px 20px">${evmCardsHtml}<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">🤖 PHÂN TÍCH AI — TUẦN ${wk}/${yr}</div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:12px;border-radius:0 0 4px 4px;background:#FAFAFA">${aiHtml}</div></div>${scurveSvgHtml}${kttcNote?`<div style="margin-bottom:14px;padding:10px 14px;background:#FFFBEB;border-left:4px solid #D97706;border-radius:0 4px 4px 0"><div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:4px">📝 GHI CHÚ PHÒNG KTTC</div><div style="font-size:13px;color:#78350F;white-space:pre-wrap;line-height:1.6">${kttcNote}</div></div>`:''} ${attachHtml}${photosHtml}${summaryTableHtml}<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">📅 SƠ ĐỒ GANTT TỔNG QUAN</div><div style="border:0.5px solid #E2E8F0;border-top:none;border-radius:0 0 4px 4px;overflow:hidden">${ganttHtml}<div style="padding:4px 8px;background:#F8FAFC;font-size:10px;color:#64748B;display:flex;gap:14px"><span><span style="display:inline-block;width:12px;height:5px;background:#93C5FD;border-radius:2px;vertical-align:middle;margin-right:3px"></span>KH</span><span><span style="display:inline-block;width:12px;height:5px;background:#16A34A;border-radius:2px;vertical-align:middle;margin-right:3px"></span>TT đúng/vượt</span><span><span style="display:inline-block;width:12px;height:5px;background:#DC2626;border-radius:2px;vertical-align:middle;margin-right:3px"></span>TT trễ</span><span><span style="display:inline-block;width:2px;height:12px;background:#F97316;vertical-align:middle;margin-right:3px"></span>Hôm nay</span></div></div></div>${attendanceHtml}</div><div style="background:#F1F5F9;border-top:1px solid #E2E8F0;padding:8px 24px;display:flex;justify-content:space-between"><span style="font-size:11px;color:#64748B">VelaE&C — Hệ thống theo dõi tiến độ thi công</span><span style="font-size:11px;color:#64748B">Phát hành: Phòng KTTC VelaE&C</span></div></div></body></html>`
+    // ── CÁC MỐC TIẾN ĐỘ — PDF section ─────────────────────
+    let milestonePdfHtml = ''
+    try {
+      const { data: msGroups } = await sb.from('milestone_groups')
+        .select('*').eq('project_id', proj.id).order('sort_order')
+      if (msGroups?.length) {
+        const { data: msLinks } = await sb.from('milestone_tasks')
+          .select('milestone_id, task_id')
+          .in('milestone_id', msGroups.map(g => g.id))
+        const msLinkMap = {}
+        ;(msLinks||[]).forEach(l => {
+          if (!msLinkMap[l.milestone_id]) msLinkMap[l.milestone_id] = []
+          msLinkMap[l.milestone_id].push(l.task_id)
+        })
+        const fmtQty = v => Number.isInteger(v) ? v : parseFloat(v.toFixed(1))
+        const msRows = msGroups.map(g => {
+          const tids   = msLinkMap[g.id] || []
+          const msTasks = STATE.tasks.filter(t => tids.includes(t.id))
+          const unit    = g.unit || 'căn'
+          let completedQty = 0, totalQty = 0, notStartedQty = 0
+          msTasks.forEach(t => {
+            const pct = t.display_pct !== undefined ? t.display_pct : (t.pct_complete||0)
+            const qty = t.planned_quantity || 1
+            const actual = t.actual_quantity != null && t.actual_quantity > 0
+              ? t.actual_quantity : Math.round(qty * pct / 100)
+            totalQty += qty
+            completedQty += actual
+            if (pct === 0) notStartedQty += qty
+          })
+          const donePct  = totalQty > 0 ? Math.round(completedQty / totalQty * 100) : 0
+          const remaining = Math.max(0, totalQty - completedQty)
+          const barClr   = donePct===100?'#16A34A':donePct>=60?'#0D9488':donePct>=30?'#D97706':'#2563EB'
+          return `<tr style="border-bottom:0.5px solid #E2E8F0">
+            <td style="padding:7px 12px;font-size:13px;font-weight:600;color:#1E293B">${g.name}</td>
+            <td style="padding:7px 12px;min-width:140px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="flex:1;height:6px;background:#E2E8F0;border-radius:3px;overflow:hidden">
+                  <div style="width:${donePct}%;height:100%;background:${barClr};border-radius:3px"></div>
+                </div>
+                <span style="font-size:12px;font-weight:700;color:${barClr};width:32px;text-align:right">${donePct}%</span>
+              </div>
+            </td>
+            <td style="padding:7px 10px;text-align:center;font-size:13px;font-weight:700;color:#16A34A">${fmtQty(completedQty)} <span style="font-size:10px;color:#64748B">/ ${fmtQty(totalQty)} ${unit}</span></td>
+            <td style="padding:7px 10px;text-align:center;font-size:13px;color:#64748B">${fmtQty(remaining)} ${unit}</td>
+          </tr>`
+        }).join('')
+        milestonePdfHtml = `<div style="margin-bottom:14px">
+          <div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">🏁 CÁC MỐC TIẾN ĐỘ</div>
+          <table style="width:100%;border-collapse:collapse;border:0.5px solid #E2E8F0">
+            <thead><tr style="background:#F8FAFC;font-size:11px;color:#64748B">
+              <th style="padding:6px 12px;text-align:left;font-weight:600">Mốc công việc</th>
+              <th style="padding:6px 12px;text-align:left;font-weight:600;min-width:150px">Tiến độ</th>
+              <th style="padding:6px 10px;text-align:center;font-weight:600">✅ Đã thực hiện</th>
+              <th style="padding:6px 10px;text-align:center;font-weight:600">○ Còn lại</th>
+            </tr></thead>
+            <tbody>${msRows}</tbody>
+          </table>
+        </div>`
+      }
+    } catch(e) { console.warn('Milestone PDF:', e) }
+
+        const htmlContent=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI",Arial,sans-serif}body{background:white;width:900px}</style></head><body><div id="pdf-content" style="width:900px;background:white"><div style="background:#1A2B4A;padding:14px 24px;display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:12px"><img src="${LOGO_URL}" style="height:44px;width:auto" crossorigin="anonymous" onerror="this.style.display='none'"><div><div style="color:#F97316;font-size:11px;letter-spacing:.08em">PHÒNG KTTC — VELAE&C</div></div></div><div style="text-align:right"><div style="color:white;font-size:20px;font-weight:700">BÁO CÁO TIẾN ĐỘ THI CÔNG</div><div style="color:rgba(255,255,255,.8);font-size:13px;margin-top:3px">${proj.name}</div><div style="color:rgba(255,255,255,.65);font-size:11px;margin-top:2px">Tuần ${wk}/${yr} | Ngày lập: ${today}</div></div></div><div style="padding:14px 20px">${evmCardsHtml}${scurveSvgHtml}${milestonePdfHtml}${attendanceHtml}<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">🤖 PHÂN TÍCH AI — TUẦN ${wk}/${yr}</div><div style="border:0.5px solid #E2E8F0;border-top:none;padding:12px;border-radius:0 0 4px 4px;background:#FAFAFA">${aiHtml}</div></div>${kttcNote?`<div style="margin-bottom:14px;padding:10px 14px;background:#FFFBEB;border-left:4px solid #D97706;border-radius:0 4px 4px 0"><div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:4px">📝 GHI CHÚ PHÒNG KTTC</div><div style="font-size:13px;color:#78350F;white-space:pre-wrap;line-height:1.6">${kttcNote}</div></div>`:''} ${attachHtml}${photosHtml}<div style="margin-bottom:14px"><div style="background:#1A2B4A;color:white;font-size:13px;font-weight:700;padding:6px 10px;border-radius:4px 4px 0 0">📅 SƠ ĐỒ GANTT TỔNG QUAN</div><div style="border:0.5px solid #E2E8F0;border-top:none;border-radius:0 0 4px 4px;overflow:hidden">${ganttHtml}<div style="padding:4px 8px;background:#F8FAFC;font-size:10px;color:#64748B;display:flex;gap:14px"><span><span style="display:inline-block;width:12px;height:5px;background:#93C5FD;border-radius:2px;vertical-align:middle;margin-right:3px"></span>KH</span><span><span style="display:inline-block;width:12px;height:5px;background:#16A34A;border-radius:2px;vertical-align:middle;margin-right:3px"></span>TT đúng/vượt</span><span><span style="display:inline-block;width:12px;height:5px;background:#DC2626;border-radius:2px;vertical-align:middle;margin-right:3px"></span>TT trễ</span><span><span style="display:inline-block;width:2px;height:12px;background:#F97316;vertical-align:middle;margin-right:3px"></span>Hôm nay</span></div></div></div>${summaryTableHtml}</div><div style="background:#F1F5F9;border-top:1px solid #E2E8F0;padding:8px 24px;display:flex;justify-content:space-between"><span style="font-size:11px;color:#64748B">VelaE&C — Hệ thống theo dõi tiến độ thi công</span><span style="font-size:11px;color:#64748B">Phát hành: Phòng KTTC VelaE&C</span></div></div></body></html>`
 
     const container=document.createElement('div');container.style.cssText='position:fixed;top:-9999px;left:-9999px;width:900px;z-index:-1';container.innerHTML=htmlContent;document.body.appendChild(container)
     const img=container.querySelector('img');if(img)await new Promise(r=>{if(img.complete)r();else{img.onload=r;img.onerror=r;setTimeout(r,3000)}})
