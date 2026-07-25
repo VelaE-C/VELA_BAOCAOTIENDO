@@ -50,7 +50,14 @@ async function initApp(user) {
   ).join('')
 
   if (STATE.projects.length > 0) {
-    STATE.currentProject = STATE.projects[0]
+    // Restore project từ URL hash nếu có
+  const _hashParams = new URLSearchParams(location.hash.replace('#',''))
+  const _hashProjId = _hashParams.get('p')
+  const _restoredProj = _hashProjId
+    ? STATE.projects.find(p => p.id === _hashProjId)
+    : null
+  STATE.currentProject = _restoredProj || STATE.projects[0]
+  if (_restoredProj) sel.value = _restoredProj.id
     await loadProjectData(STATE.currentProject.id)
   } else {
     document.getElementById('login-screen').style.display = 'none'
@@ -65,6 +72,11 @@ async function initApp(user) {
     await loadProjectData(STATE.currentProject.id)
     navigate(document.querySelector('.sidebar-item.active')?.dataset.page || 'dashboard')
   })
+
+  // Restore tab từ URL hash sau khi app load xong
+  const _hash = new URLSearchParams(location.hash.replace('#',''))
+  const _tab  = _hash.get('t')
+  if (_tab) navigate(_tab)
 
   document.getElementById('login-screen').style.display = 'none'
   document.getElementById('app').style.display = 'flex'
@@ -108,6 +120,11 @@ async function loadProjectData(projectId) {
 // NAVIGATION
 // ═══════════════════════════════════════════════════════════
 function navigate(page) {
+  // ── URL routing: cập nhật hash để F5 vẫn giữ trang ──
+  const projId = STATE.currentProject?.id || ''
+  const newHash = projId ? `#p=${projId}&t=${page}` : `#t=${page}`
+  if (location.hash !== newHash) history.replaceState(null, '', newHash)
+
   document.querySelectorAll('.sidebar-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page)
   })
