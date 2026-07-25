@@ -18,6 +18,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="VelaE&C">
   <meta name="theme-color" content="#1A2B4A">
+  <style>
+    /* Sticky topbar — mobile */
+    .topbar { position: sticky; top: 0; z-index: 100; }
+    @media (max-width: 1023px) {
+      .topbar { position: fixed; top: 0; left: 0; right: 0; }
+      #app { padding-top: 52px; }
+      #project-select { max-width: 150px; }
+    }
+  </style>
 </head>
 <body>
 <div id="login-screen">
