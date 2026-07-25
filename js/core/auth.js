@@ -97,7 +97,10 @@ async function initApp(user) {
     if (su) su.style.display = 'flex'
   }
 
-  navigate('dashboard')
+  // Restore tab từ URL hash nếu có, fallback về dashboard
+  const _hashRestore = new URLSearchParams(location.hash.replace('#',''))
+  const _tabRestore  = _hashRestore.get('t')
+  navigate(_tabRestore || 'dashboard')
 }
 
 async function loadProjectData(projectId) {
