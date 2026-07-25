@@ -9,6 +9,14 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
 <link rel="stylesheet" href="css/main.css">
+  <!-- PWA manifest -->
+  <link rel="manifest" href="manifest.json">
+  <!-- iOS icon khi add to home screen -->
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/VelaE-C/VELA_BAOCAOTIENDO/refs/heads/main/Logo%20VELA%20E%26C-01.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VelaE&C">
+  <meta name="theme-color" content="#1A2B4A">
 </head>
 <body>
 <div id="login-screen">
@@ -71,7 +79,6 @@
       <div class="sidebar-item" data-page="gantt"><span class="si-icon">📊</span> Gantt View</div>
       <div class="sidebar-item" data-page="photos"><span class="si-icon">📷</span> Ảnh hiện trường</div>
       <div class="sidebar-item" data-page="compare"><span class="si-icon">🔄</span> So sánh tuần</div>
-      <div class="sidebar-item" data-page="milestone"><span class="si-icon">🏁</span> Báo cáo các mốc</div>
       <div class="sidebar-item" data-page="import"><span class="si-icon">📥</span> Import MS Project</div>
       <div class="sidebar-item" data-page="payment" id="sidebar-payment" style="display:none"><span class="si-icon">💰</span> Thanh toán</div>
       <div class="sidebar-item" data-page="users" id="sidebar-users" style="display:none"><span class="si-icon">👥</span> Quản lý User</div>
@@ -99,7 +106,6 @@
 <!-- CORE -->
 <script src="js/core/config.js"></script>
 <script src="js/core/utils.js"></script>
-<script src="js/modules/milestone.js"></script>
 <script src="js/core/auth.js"></script>
 <!-- MODULES -->
 <script src="js/modules/dashboard.js"></script>
