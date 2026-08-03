@@ -5,12 +5,13 @@ function usersPage() {
   return `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
     <div>
-      <h2 style="font-size:18px;font-weight:700">Quản lý User</h2>
-      <p style="font-size:13px;color:var(--gray4)">Tạo tài khoản và phân quyền — ${STATE.projects.length} dự án</p>
+      <h2 style="font-size:18px;font-weight:700">Quản lý User & Dự án</h2>
+      <p style="font-size:13px;color:var(--gray4)">Tạo tài khoản, phân quyền và quản lý dự án</p>
     </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-secondary" onclick="openBulkImportModal()">📥 Import hàng loạt (CSV)</button>
-      <button class="btn btn-primary" onclick="openAddUserModal()">➕ Thêm 1 user</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${STATE.role==='admin'?`<button class="btn btn-secondary btn-sm" onclick="openCreateProjectModal()">🏗️ Tạo dự án</button>`:''}
+      <button class="btn btn-secondary" onclick="openBulkImportModal()">📥 Import CSV</button>
+      <button class="btn btn-primary" onclick="openAddUserModal()">➕ Thêm user</button>
     </div>
   </div>
 
@@ -25,6 +26,17 @@ function usersPage() {
     <div id="users-table-wrap" style="padding:0">
       <div style="padding:30px;text-align:center;color:var(--gray4)">Đang tải...</div>
     </div>
+  </div>
+
+  <!-- Quản lý dự án -->
+  <div class="card" style="margin-top:16px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--gray2);display:flex;justify-content:space-between;align-items:center">
+      <div class="card-title" style="margin:0">🏗️ Danh sách dự án</div>
+      ${STATE.role==='admin'?`<button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()">➕ Tạo dự án mới</button>`:''}
+    </div>
+    <div id="project-list-admin" style="padding:12px">
+      <div style="color:var(--gray4);text-align:center;padding:16px">Đang tải...</div>
+    </div>
   </div>`
 }
 
@@ -35,6 +47,7 @@ async function initUsersPage() {
     return
   }
   await loadUsersTable()
+  await loadAdminProjects()
 }
 
 async function loadUsersTable() {
@@ -523,4 +536,193 @@ async function deleteProject(projectId, projectCode) {
   } finally {
     loading(false)
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// QUẢN LÝ DỰ ÁN — Tạo / Sửa / Xóa
+// ═══════════════════════════════════════════════════════════
+async function loadAdminProjects() {
+  const el = document.getElementById('project-list-admin')
+  if (!el) return
+
+  const { data: projects } = await sb.from('projects')
+    .select('*').order('created_at', { ascending: false })
+
+  if (!projects?.length) {
+    el.innerHTML = '<div style="color:var(--gray4);padding:16px;text-align:center">Chưa có dự án nào</div>'
+    return
+  }
+
+  const fmtD = d => d ? new Date(d).toLocaleDateString('vi-VN') : '—'
+  const rows = projects.map(p => `
+    <tr style="border-bottom:0.5px solid var(--gray2)">
+      <td style="padding:8px 12px;font-size:13px;font-weight:600;color:var(--navy)">${p.code || '—'}</td>
+      <td style="padding:8px 12px;font-size:13px;color:var(--gray7)">${p.name}</td>
+      <td style="padding:8px 12px;font-size:12px;color:var(--gray5);text-align:center">${fmtD(p.start_date)}</td>
+      <td style="padding:8px 12px;font-size:12px;color:var(--gray5);text-align:center">${fmtD(p.finish_date)}</td>
+      <td style="padding:8px 12px;text-align:center">
+        ${p.contract_value
+          ? `<span style="font-size:12px;color:var(--teal);font-weight:600">${(p.contract_value/1e9).toFixed(1)}tỷ</span>`
+          : '<span style="font-size:11px;color:var(--gray4)">—</span>'}
+      </td>
+      <td style="padding:8px 12px;text-align:center">
+        <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${p.start_date?'#DCFCE7':'#FEF3C7'};color:${p.start_date?'#166534':'#92400E'}">
+          ${p.start_date ? '✅ Có tiến độ' : '⏳ Chờ import'}
+        </span>
+      </td>
+      <td style="padding:8px 12px;text-align:center">
+        <div style="display:flex;gap:4px;justify-content:center">
+          <button onclick="openEditProjectInfoModal('${p.id}','${(p.code||'').replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}','${p.contract_value||''}')"
+            class="btn btn-secondary btn-sm" style="font-size:11px">✏️</button>
+        </div>
+      </td>
+    </tr>`).join('')
+
+  el.innerHTML = `<div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="background:var(--navy);color:white;font-size:12px">
+          <th style="padding:8px 12px;text-align:left">Mã DA</th>
+          <th style="padding:8px 12px;text-align:left">Tên dự án</th>
+          <th style="padding:8px 12px;text-align:center">Ngày BĐ</th>
+          <th style="padding:8px 12px;text-align:center">Ngày KT</th>
+          <th style="padding:8px 12px;text-align:center">Giá trị HĐ</th>
+          <th style="padding:8px 12px;text-align:center">Trạng thái</th>
+          <th style="padding:8px 12px;text-align:center">Thao tác</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`
+}
+
+function openCreateProjectModal() {
+  openModal('🏗️ Tạo dự án mới', `
+    <div style="font-size:13px;color:var(--gray5);margin-bottom:14px;padding:10px;background:var(--lblue);border-radius:6px">
+      💡 Tạo dự án trống để app CHAMCONG có thể chọn ngay.<br>
+      Import tiến độ XML sau khi có file từ MS Project.
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Mã dự án (viết tắt) <span style="color:var(--red)">*</span></label>
+        <input class="form-input" id="cp-code" placeholder="VD: GENBYTE, KN, VCN2..." style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Giá trị hợp đồng (VND)</label>
+        <input class="form-input" type="number" id="cp-value" placeholder="VD: 50000000000">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tên đầy đủ <span style="color:var(--red)">*</span></label>
+      <input class="form-input" id="cp-name" placeholder="VD: GenByte Factory — Nhà xưởng sản xuất">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Ngày bắt đầu KH</label>
+        <input class="form-input" type="date" id="cp-start">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ngày kết thúc KH</label>
+        <input class="form-input" type="date" id="cp-finish">
+      </div>
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+    <button class="btn btn-primary" onclick="createEmptyProject()">💾 Tạo dự án</button>
+  `)
+  setTimeout(() => {
+    document.getElementById('cp-code')?.addEventListener('input', function() {
+      this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '')
+    })
+    document.getElementById('cp-code')?.focus()
+  }, 100)
+}
+
+async function createEmptyProject() {
+  const code  = document.getElementById('cp-code')?.value.trim().toUpperCase()
+  const name  = document.getElementById('cp-name')?.value.trim()
+  const start = document.getElementById('cp-start')?.value || null
+  const finish= document.getElementById('cp-finish')?.value || null
+  const value = parseFloat(document.getElementById('cp-value')?.value) || null
+
+  if (!code) { toast('Vui lòng nhập mã dự án', 'error'); return }
+  if (!name)  { toast('Vui lòng nhập tên dự án', 'error'); return }
+
+  // Kiểm tra code trùng
+  const { data: existing } = await sb.from('projects').select('id').eq('code', code).maybeSingle()
+  if (existing) { toast('Mã dự án đã tồn tại: ' + code, 'error'); return }
+
+  loading(true, 'Đang tạo dự án...')
+  const { data, error } = await sb.from('projects').insert({
+    code, name, msp_name: name,
+    start_date: start, finish_date: finish, contract_value: value,
+  }).select().single()
+  loading(false)
+
+  if (error) { toast('Lỗi: ' + error.message, 'error'); return }
+
+  closeModal()
+  toast(`✅ Đã tạo dự án ${code}`, 'success')
+
+  // Reload selector + admin list
+  const { data: projs } = await sb.from('projects').select('*').order('code')
+  STATE.projects = projs || []
+  const sel = document.getElementById('proj-select') || document.getElementById('project-select')
+  if (sel) {
+    sel.innerHTML = STATE.projects.map(p =>
+      `<option value="${p.id}" ${p.id===STATE.currentProject?.id?'selected':''}>
+        ${p.code ? p.code+' — ' : ''}${p.name}
+      </option>`
+    ).join('')
+  }
+  await loadAdminProjects()
+}
+
+function openEditProjectInfoModal(id, code, name, value) {
+  openModal('✏️ Sửa thông tin dự án', `
+    <div class="form-group">
+      <label class="form-label">Mã dự án</label>
+      <input class="form-input" id="ep-code" value="${code}" style="text-transform:uppercase">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tên đầy đủ</label>
+      <input class="form-input" id="ep-name" value="${name}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Giá trị hợp đồng (VND)</label>
+      <input class="form-input" type="number" id="ep-value" value="${value}">
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+    <button class="btn btn-primary" onclick="saveProjectInfo('${id}')">💾 Lưu</button>
+  `)
+}
+
+async function saveProjectInfo(id) {
+  const code  = document.getElementById('ep-code')?.value.trim().toUpperCase()
+  const name  = document.getElementById('ep-name')?.value.trim()
+  const value = parseFloat(document.getElementById('ep-value')?.value) || null
+  if (!name) { toast('Vui lòng nhập tên', 'error'); return }
+
+  loading(true, 'Đang lưu...')
+  const { error } = await sb.from('projects')
+    .update({ code, name, msp_name: name, contract_value: value })
+    .eq('id', id)
+  loading(false)
+  if (error) { toast('Lỗi: ' + error.message, 'error'); return }
+  closeModal()
+  toast('Đã cập nhật dự án', 'success')
+
+  // Refresh selector
+  const { data: projs } = await sb.from('projects').select('*').order('code')
+  STATE.projects = projs || []
+  const sel = document.getElementById('proj-select') || document.getElementById('project-select')
+  if (sel) {
+    sel.innerHTML = STATE.projects.map(p =>
+      `<option value="${p.id}" ${p.id===STATE.currentProject?.id?'selected':''}>
+        ${p.code ? p.code+' — ' : ''}${p.name}
+      </option>`
+    ).join('')
+  }
+  await loadAdminProjects()
 }
