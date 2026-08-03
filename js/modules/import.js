@@ -7,14 +7,51 @@ function importPage() {
   <div class="card">
     <div class="card-title">Tạo dự án mới từ file XML</div>
     <div class="card-sub">Export từ MS Project: File → Save As → XML (*.xml)</div>
-    <div class="form-row" style="margin-bottom:14px">
-      <div class="form-group">
-        <label class="form-label">Mã dự án (viết tắt)</label>
-        <input class="form-input" id="imp-code" placeholder="VD: OASIS, VEGA, VCN...">
+
+    <!-- Chọn mode: tạo mới hoặc gán vào dự án có sẵn -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;padding:8px 14px;border-radius:6px;border:1px solid var(--gray3);flex:1" id="mode-new-lbl">
+        <input type="radio" name="import-mode" value="new" id="mode-new" checked onchange="toggleImportMode()" style="accent-color:var(--blue)">
+        <span>➕ Tạo dự án mới</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;padding:8px 14px;border-radius:6px;border:1px solid var(--gray3);flex:1" id="mode-exist-lbl">
+        <input type="radio" name="import-mode" value="existing" id="mode-existing" onchange="toggleImportMode()" style="accent-color:var(--blue)">
+        <span>🔗 Gán vào dự án đã tạo</span>
+      </label>
+    </div>
+
+    <!-- Mode: Tạo mới -->
+    <div id="import-new-fields">
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group">
+          <label class="form-label">Mã dự án (viết tắt)</label>
+          <input class="form-input" id="imp-code" placeholder="VD: OASIS, VEGA, VCN...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tên đầy đủ</label>
+          <input class="form-input" id="imp-name" placeholder="VD: OASIS - Tiến Độ Thi Công">
+        </div>
       </div>
+    </div>
+
+    <!-- Mode: Gán vào dự án có sẵn -->
+    <div id="import-existing-fields" style="display:none;margin-bottom:14px">
       <div class="form-group">
-        <label class="form-label">Tên đầy đủ</label>
-        <input class="form-input" id="imp-name" placeholder="VD: OASIS - Tiến Độ Thi Công">
+        <label class="form-label">Chọn dự án đã tạo <span style="color:var(--red)">*</span></label>
+        <select class="form-input" id="imp-existing-proj">
+          <option value="">— Chọn dự án —</option>
+          ${STATE.projects.filter(p=>!p.start_date).map(p =>
+            `<option value="${p.id}" data-code="${p.code}" data-name="${p.name}">${p.code} — ${p.name}</option>`
+          ).join('')}
+          ${STATE.projects.filter(p=>p.start_date).length ? `<optgroup label="Đã có tiến độ (sẽ cập nhật)">
+            ${STATE.projects.filter(p=>p.start_date).map(p =>
+              `<option value="${p.id}" data-code="${p.code}" data-name="${p.name}">${p.code} — ${p.name}</option>`
+            ).join('')}
+          </optgroup>` : ''}
+        </select>
+        <div style="font-size:11px;color:var(--gray4);margin-top:4px">
+          Dự án chưa có tiến độ hiển thị trên cùng · Import sẽ ghi đè tiến độ cũ nếu có
+        </div>
       </div>
     </div>
     <div class="drop-zone" id="drop-zone"
@@ -33,6 +70,16 @@ function importPage() {
 
 function initImport() {}
 
+function toggleImportMode() {
+  const mode = document.querySelector('input[name="import-mode"]:checked')?.value
+  document.getElementById('import-new-fields').style.display  = mode === 'new' ? '' : 'none'
+  document.getElementById('import-existing-fields').style.display = mode === 'existing' ? '' : 'none'
+  // Style active label
+  document.getElementById('mode-new-lbl').style.borderColor   = mode==='new' ? 'var(--blue)' : 'var(--gray3)'
+  document.getElementById('mode-exist-lbl').style.borderColor = mode==='existing' ? 'var(--blue)' : 'var(--gray3)'
+}
+
+
 function handleDrop(e) {
   e.preventDefault()
   document.getElementById('drop-zone').classList.remove('dragover')
@@ -46,10 +93,22 @@ function handleFileSelect(input) {
 }
 
 async function processXmlFile(file) {
-  const code = document.getElementById('imp-code').value.trim().toUpperCase()
-  const name = document.getElementById('imp-name').value.trim()
+  const mode = document.querySelector('input[name="import-mode"]:checked')?.value || 'new'
+  let code, name
 
-  if (!code) { toast('Vui lòng nhập mã dự án', 'error'); return }
+  if (mode === 'existing') {
+    const sel = document.getElementById('imp-existing-proj')
+    const opt = sel?.options[sel.selectedIndex]
+    if (!sel?.value) { toast('Vui lòng chọn dự án', 'error'); return }
+    code = opt?.dataset.code || ''
+    name = opt?.dataset.name || ''
+    window._importExistingProjectId = sel.value
+  } else {
+    code = document.getElementById('imp-code').value.trim().toUpperCase()
+    name = document.getElementById('imp-name').value.trim()
+    window._importExistingProjectId = null
+    if (!code) { toast('Vui lòng nhập mã dự án', 'error'); return }
+  }
 
   const prev = document.getElementById('import-preview')
   prev.innerHTML = '<span style="color:var(--gray4)">Đang đọc file...</span>'
@@ -83,14 +142,26 @@ async function uploadToSupabase(parsed) {
   try {
     const { tasks, predecessors, project } = parsed
 
-    // Upsert project
-    const { data: projData, error: pErr } = await sb.from('projects')
-      .upsert({ code: project.code, name: project.name, msp_name: project.msp_name,
-                start_date: project.start_date, finish_date: project.finish_date,
-                updated_at: new Date().toISOString() }, { onConflict: 'code' })
-      .select('id').single()
-    if (pErr) throw pErr
-    const projectId = projData.id
+    // Upsert project — nếu mode existing thì update dự án đã chọn
+    let projectId
+    if (window._importExistingProjectId) {
+      // Gán vào dự án có sẵn — chỉ update tiến độ, giữ code/name
+      const { error: pErr } = await sb.from('projects')
+        .update({ msp_name: project.msp_name,
+                  start_date: project.start_date, finish_date: project.finish_date,
+                  updated_at: new Date().toISOString() })
+        .eq('id', window._importExistingProjectId)
+      if (pErr) throw pErr
+      projectId = window._importExistingProjectId
+    } else {
+      const { data: projData, error: pErr } = await sb.from('projects')
+        .upsert({ code: project.code, name: project.name, msp_name: project.msp_name,
+                  start_date: project.start_date, finish_date: project.finish_date,
+                  updated_at: new Date().toISOString() }, { onConflict: 'code' })
+        .select('id').single()
+      if (pErr) throw pErr
+      projectId = projData.id
+    }
 
     // Upsert tasks in batches
     loading(true, `Uploading ${tasks.length} tasks...`)
